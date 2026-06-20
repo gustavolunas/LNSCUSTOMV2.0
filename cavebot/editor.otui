@@ -1,0 +1,44 @@
+CaveBotEditorButton < Button
+
+
+CaveBotEditorPanel < Panel
+  id: cavebotEditor
+  visible: false
+  layout:
+    type: verticalBox
+    fit-children: true
+  
+  Label
+    id: pos
+    text-align: center
+    margin-top: 3
+    font: verdana-11px-rounded
+    text: -
+
+  BotSwitch
+    id: autoRecording
+    text: Auto Recording
+    margin-top: 1
+    visible: true
+    
+  Panel
+    id: buttons
+    margin-top: 2
+    layout:
+      type: grid
+      cell-size: 75 20
+      cell-spacing: 1
+      flow: true
+      fit-children: true
+
+  Label
+    text: Double click on action from action list to edit it
+    text-align: center
+    text-auto-resize: true
+    text-wrap: true
+    visible: false
+    margin-top: 3
+    margin-left: 2
+    margin-right: 2
+
+  
