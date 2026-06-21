@@ -13,6 +13,8 @@ CaveBot.Extensions.TestAction.setup = function()
 
       {"Auto Imbuement", "checkerImbuementsList()\nreturn true"},
 
+      {"Imbue Scrolls", "checkerScrollImbueBlankCaveBot()\nreturn true"},
+
       {"Check Ragnar", "checkerTaskRagnar()\nreturn true"},
 
       {"Check Boss", "checkerAutoBoss()\nreturn true"},
