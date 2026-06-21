@@ -4299,7 +4299,13 @@ local scrollCraftState = {
   lastAction = 0,
   startedAt = 0,
   timeoutAt = 0,
-  releaseCavebotUntil = 0
+  releaseCavebotUntil = 0,
+
+  -- Controle usado APENAS pelo checker do CaveBot.
+  -- startScrollImbueBlank(), stopScrollImbueBlank() e icones NAO desligam/ligam CaveBot.
+  cavebotControl = false,
+  cavebotWasOn = false,
+  cavebotFallbackAt = 0
 }
 
 local function nowMs()
@@ -4319,6 +4325,82 @@ local function later(ms, fn)
     return g_dispatcher:scheduleEvent(fn, ms)
   end
   return fn()
+end
+
+local BLANK_CAVEBOT_FALLBACK_BASE_MS = 60000
+local BLANK_CAVEBOT_FALLBACK_PER_SCROLL_MS = 18000
+
+local function caveBotIsOnSafe()
+  if not CaveBot then return true end
+
+  if type(CaveBot.isOn) == "function" then
+    local ok, result = pcall(function()
+      return CaveBot.isOn()
+    end)
+    if ok then return result == true end
+  end
+
+  if type(CaveBot.isOff) == "function" then
+    local ok, result = pcall(function()
+      return CaveBot.isOff()
+    end)
+    if ok then return result ~= true end
+  end
+
+  -- Se nao tiver isOn/isOff, considera ligado porque esta vindo de uma Action do CaveBot.
+  return true
+end
+
+local function caveBotSetOffSafe()
+  if CaveBot and type(CaveBot.setOff) == "function" then
+    return pcall(function()
+      CaveBot.setOff()
+    end)
+  end
+  return false
+end
+
+local function caveBotSetOnSafe()
+  if CaveBot and type(CaveBot.setOn) == "function" then
+    return pcall(function()
+      CaveBot.setOn()
+    end)
+  end
+  return false
+end
+
+local function calcBlankCavebotFallbackMs(queue)
+  local total = type(queue) == "table" and #queue or 0
+  return math.max(
+    BLANK_CAVEBOT_FALLBACK_BASE_MS,
+    15000 + (total * BLANK_CAVEBOT_FALLBACK_PER_SCROLL_MS)
+  )
+end
+
+local function pauseCaveBotForBlank(queue)
+  scrollCraftState.cavebotControl = true
+  scrollCraftState.cavebotWasOn = caveBotIsOnSafe()
+  scrollCraftState.cavebotFallbackAt = nowMs() + calcBlankCavebotFallbackMs(queue)
+
+  if scrollCraftState.cavebotWasOn == true then
+    caveBotSetOffSafe()
+  end
+end
+
+local function releaseCaveBotFromBlank()
+  if scrollCraftState.cavebotControl == true and scrollCraftState.cavebotWasOn == true then
+    caveBotSetOnSafe()
+  end
+
+  scrollCraftState.cavebotControl = false
+  scrollCraftState.cavebotWasOn = false
+  scrollCraftState.cavebotFallbackAt = 0
+end
+
+local function keepCaveBotOffDuringBlank()
+  if scrollCraftState.cavebotControl == true and scrollCraftState.cavebotWasOn == true then
+    caveBotSetOffSafe()
+  end
 end
 
 local function lower(v)
@@ -4660,9 +4742,15 @@ local function resetScrollCraftState()
   scrollCraftState.lastAction = 0
   scrollCraftState.startedAt = 0
   scrollCraftState.timeoutAt = 0
+  scrollCraftState.cavebotControl = false
+  scrollCraftState.cavebotWasOn = false
+  scrollCraftState.cavebotFallbackAt = 0
 end
 
 local function finishScrollCrafting(message, releaseCavebotMs)
+  -- So religa o CaveBot se o processo foi iniciado pelo checker especifico do CaveBot.
+  releaseCaveBotFromBlank()
+
   resetScrollCraftState()
   closeImbuingWindowSafe()
 
@@ -4765,7 +4853,6 @@ end
 function checkerScrollImbueBlank()
   if scrollCraftState.active then return "retry" end
 
-  -- Quando der timeout/parar por segurança, libera o CaveBot para continuar.
   if nowMs() < (scrollCraftState.releaseCavebotUntil or 0) then
     return true
   end
@@ -4780,6 +4867,56 @@ function checkerScrollImbueBlank()
   end
 
   return true
+end
+
+function startScrollImbueBlankCaveBot()
+  if scrollCraftState.active then
+    keepCaveBotOffDuringBlank()
+    return true
+  end
+
+  saveBlankRows()
+  local q = buildScrollCraftQueue()
+
+  if #q == 0 then
+    return false
+  end
+
+  if startScrollImbueBlank() then
+    pauseCaveBotForBlank(q)
+    return true
+  end
+
+  return false
+end
+
+function checkerScrollImbueBlankCaveBot()
+  if scrollCraftState.active then
+    keepCaveBotOffDuringBlank()
+    return "retry"
+  end
+
+  if nowMs() < (scrollCraftState.releaseCavebotUntil or 0) then
+    return true
+  end
+
+  saveBlankRows()
+  local q = buildScrollCraftQueue()
+
+  if #q == 0 then
+    return true
+  end
+
+  if startScrollImbueBlank() then
+    pauseCaveBotForBlank(q)
+    return "retry"
+  end
+
+  return true
+end
+
+function checkerScrollImbueBlankWithCaveBot()
+  return checkerScrollImbueBlankCaveBot()
 end
 
 local function onScrollImbuementWindow(itemIdFromWindow, slots, activeSlots, windowImbuements, needItems)
@@ -4858,18 +4995,27 @@ macro(200, function()
 
   local t = nowMs()
 
+  if scrollCraftState.cavebotControl == true then
+    keepCaveBotOffDuringBlank()
+
+    if (scrollCraftState.cavebotFallbackAt or 0) > 0 and t > scrollCraftState.cavebotFallbackAt then
+      finishScrollCrafting("[Scroll Imbue] Fallback CaveBot: tempo limite atingido, religando CaveBot.", 12000)
+      return
+    end
+  end
+
   if (scrollCraftState.timeoutAt or 0) > 0 and t > scrollCraftState.timeoutAt then
-    finishScrollCrafting("[Scroll Imbue] Timeout de seguranca. Liberando CaveBot.", 12000)
+    finishScrollCrafting("[Scroll Imbue] Timeout de seguranca.", 12000)
     return
   end
 
   if scrollCraftState.waitingWindow and t - (scrollCraftState.lastAction or 0) > 18000 then
-    finishScrollCrafting("[Scroll Imbue] Travou esperando abrir a janela. Liberando CaveBot.", 12000)
+    finishScrollCrafting("[Scroll Imbue] Travou esperando abrir a janela.", 12000)
     return
   end
 
   if scrollCraftState.waitingApply and t - (scrollCraftState.lastAction or 0) > 18000 then
-    finishScrollCrafting("[Scroll Imbue] Travou aplicando o imbue. Liberando CaveBot.", 12000)
+    finishScrollCrafting("[Scroll Imbue] Travou aplicando o imbue.", 12000)
     return
   end
 
