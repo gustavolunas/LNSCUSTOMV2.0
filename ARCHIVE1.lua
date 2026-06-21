@@ -2485,6 +2485,24 @@ end
 local function tryUseAttack(attack, dist, target, targetIsPlayer, pPos, unsafeNow)
   if not attack or not attack.enabled or not attackReady(attack) then return false end
 
+  --==================================================
+  -- MONK HARMONY LOCK
+  -- Builder só usa com harmonia abaixo de 5/5.
+  -- Finisher só usa com harmonia cheia 5/5.
+  --==================================================
+  if attack.type == "spell" and monkHarmonyFlowActive() then
+    local spellName = attack.spell or ""
+    local harmony = monkHarmonyGet()
+
+    if isHarmonyFinisherSpell(spellName) and harmony < MONK_HARMONY_MAX then
+      return false
+    end
+
+    if isHarmonyBuilderSpell(spellName) and harmony >= MONK_HARMONY_MAX then
+      return false
+    end
+  end
+
   -- se estiver unsafe, ignora imediatamente spell/rune unsafe
   if unsafeNow and attack.safe ~= true then
     return false
