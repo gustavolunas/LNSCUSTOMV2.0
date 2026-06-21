@@ -9,7 +9,6 @@ local function saveExtrasSettings()
   saveCharStorage(charStorage)
 end
 
--- basic elements
 extrasWindow = UI.createWindow('ExtrasWindow', rootWidget)
 extrasWindow:hide()
 extrasWindow.closeButton.onClick = function(widget)
@@ -24,11 +23,9 @@ extrasWindow.onGeometryChange = function(widget, old, new)
 end
 extrasWindow:setHeight(settings.height or 360)
 
--- available options for dest param
 local rightPanel = extrasWindow.content.right
 local leftPanel = extrasWindow.content.left
 
--- objects made by Kondrah - taken from creature editor, minor changes to adapt
 local addCheckBox = function(id, title, defaultValue, dest, tooltip)
   local widget = UI.createWidget('ExtrasCheckBox', dest)
   widget.onClick = function()
@@ -105,12 +102,6 @@ local addScrollBar = function(id, title, min, max, defaultValue, dest, tooltip)
   widget.scroll:setValue(settings[id] or defaultValue)
   widget.scroll.onValueChange(widget.scroll, widget.scroll:getValue())
 end
-
----- to maintain order, add options right after another:
---- add object
---- add variables for function (optional)
---- add callback (optional)
---- optionals should be addionaly sandboxed (if true then end)
 
 local function getBlessCommand()
   if not g_game or not g_game.getWorldName then
@@ -195,7 +186,6 @@ if true then
   local macheteId = { 2130, 3696 }
   local scytheId = { 3653 }
 
-  -- script
   if settings.useAll and settings.useAll:len() > 0 then
     hotkey(settings.useAll, function()
         if not modules.game_walking.wsadWalking then return end
