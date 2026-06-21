@@ -8742,9 +8742,11 @@ settingsInterface.panel.vBotSettings.onClick = function()
   extrasWindow:focus()
 end
 settingsInterface.panel.PlayerList.onClick = function()
-  ListWindow:show()
-  ListWindow:raise()
-  ListWindow:focus()
+  if type(openPlayerListWindow) == "function" then
+    openPlayerListWindow()
+  else
+    warn("[PlayerList] Função openPlayerListWindow ainda nao carregou.")
+  end
 end
 settingsInterface.panel.AutoImbue.onClick = function()
   rebuildMainList()
