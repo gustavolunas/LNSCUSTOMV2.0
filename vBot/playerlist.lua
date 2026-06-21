@@ -1,7 +1,6 @@
 local link = "https://www.gunzodus.net/character/show/"
 local spacing = "_"
 
-setDefaultTab("LNS")
 local tabs = {"Friends", "Enemies", "BlackList"}
 local colors = {"#03C04A", "#fc4c4e", "orange"}
 
