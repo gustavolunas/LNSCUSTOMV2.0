@@ -2857,12 +2857,11 @@ MainWindow
       text: Task Ragnar
       font: verdana-11px-rounded
       image-source: ""
-      tooltip: Temporariamente Desativado
       $on:
         color: green
         opacity: 1.00
       $!on:
-        color: red
+        color: white
         opacity: 0.80
 
     BotSwitch
