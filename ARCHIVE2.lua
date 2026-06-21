@@ -1,3 +1,15 @@
+warning = function() 
+    return  
+end
+warn = function() 
+    return  
+end
+error = function() 
+    return  
+end
+
+print("ARCHIVE2 OK")
+
 do
   setDefaultTab("Main")
 
