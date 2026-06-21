@@ -1,4 +1,3740 @@
 do
+  setDefaultTab("Tools")
+
+UI.Separator():setMarginTop(0)
+
+charStorage = charStorage or loadCharStorage()
+
+local function saveMoneyTrade()
+  saveCharStorage(charStorage)
+end
+local function saveTradeMsg()
+  saveCharStorage(charStorage)
+end
+local function saveDropperItens()
+  saveCharStorage(charStorage)
+end
+
+charStorage.moneySystem = charStorage.moneySystem or {
+  exchangeMoney = false,
+  sendTrade = false,
+  dropperEnabled = false,
+  moneyItems = {3031, 3035, 3043},
+  autoTradeMessage = "I'm using LNS CUSTOM | Disc: https://discord.gg/6xUheuXSak",
+  dropper = {
+    trashItems = {283, 284, 285},
+    useItems = {21203, 14758},
+    capItems = {21175}
+  }
+}
+
+local cfg = charStorage.moneySystem
+
+cfg.moneyItems = type(cfg.moneyItems) == "table" and cfg.moneyItems or {3031, 3035, 3043}
+cfg.autoTradeMessage = cfg.autoTradeMessage or "I'm using LNS CUSTOM | Disc: https://discord.gg/6xUheuXSak"
+cfg.dropper = cfg.dropper or {}
+cfg.dropper.trashItems = type(cfg.dropper.trashItems) == "table" and cfg.dropper.trashItems or {283, 284, 285}
+cfg.dropper.useItems = type(cfg.dropper.useItems) == "table" and cfg.dropper.useItems or {21203, 14758}
+cfg.dropper.capItems = type(cfg.dropper.capItems) == "table" and cfg.dropper.capItems or {21175}
+
+-- =========================
+-- EXCHANGE MONEY
+-- =========================
+exchangeButton = setupUI([[
+Panel
+  height: 19
+
+  BotSwitch
+    id: exchangeMoney
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    text-align: center
+    text: Exchange Money
+    height: 18
+    color: white
+]])
+
+exchangeButton.exchangeMoney:setOn(cfg.exchangeMoney)
+
+exchangeButton.exchangeMoney.onClick = function(widget)
+  cfg.exchangeMoney = not widget:isOn()
+  widget:setOn(cfg.exchangeMoney)
+  saveMoneyTrade()
+end
+
+macro(20, function()
+  if not cfg.exchangeMoney then return end
+  if not cfg.moneyItems[1] then return end
+
+  for _, container in pairs(g_game.getContainers()) do
+    if not container.lootContainer then
+      for _, item in ipairs(container:getItems()) do
+        if item:getCount() == 100 then
+          for _, moneyId in ipairs(cfg.moneyItems) do
+            local id = type(moneyId) == "table" and moneyId.id or moneyId
+            if item:getId() == tonumber(id) then
+              return g_game.use(item)
+            end
+          end
+        end
+      end
+    end
+  end
+end)
+
+local moneyContainer = UI.Container(function(widget, items)
+  cfg.moneyItems = items
+  saveMoneyTrade()
+end, true)
+
+moneyContainer:setHeight(35)
+moneyContainer:setItems(cfg.moneyItems)
+
+UI.Separator()
+
+-- =========================
+-- SEND TRADE MESSAGE
+-- =========================
+sendTrade = setupUI([[
+Panel
+  height: 19
+
+  BotSwitch
+    id: title
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    text-align: center
+    text: Send message on trade
+    height: 18
+    color: white
+]])
+
+sendTrade.title:setOn(cfg.sendTrade)
+
+sendTrade.title.onClick = function(widget)
+  cfg.sendTrade = not widget:isOn()
+  widget:setOn(cfg.sendTrade)
+  saveTradeMsg()
+end
+
+macro(1000, function()
+  if not cfg.sendTrade then return end
+
+  local msg = tostring(cfg.autoTradeMessage or "")
+  if msg:len() <= 0 then return end
+
+  local trade = getChannelId("advertising")
+  if not trade then
+    trade = getChannelId("trade")
+  end
+
+  if trade then
+    sayChannel(trade, msg)
+    delay(30000)
+  end
+end)
+
+UI.TextEdit(cfg.autoTradeMessage, function(widget, text)
+  cfg.autoTradeMessage = text
+  saveTradeMsg()
+end)
+
+UI.Separator()
+
+-- =========================
+-- DROPPER
+-- =========================
+dropper = setupUI([[
+Panel
+  height: 19
+
+  BotSwitch
+    id: title
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    text-align: center
+    margin-right: 45
+    text: Dropper
+    height: 18
+    color: white
+
+  Button
+    id: settings
+    anchors.top: prev.top
+    anchors.left: prev.right
+    anchors.right: parent.right
+    margin-left: 2
+    height: 18
+    text: Config
+    opacity: 1.00
+    color: white
+]])
+
+local edit = setupUI([[
+Panel
+  height: 150
+    
+  Label
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 5
+    text-align: center
+    text: Trash:
+
+  BotContainer
+    id: TrashItems
+    anchors.top: prev.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    height: 32
+
+  Label
+    anchors.top: prev.bottom
+    margin-top: 5
+    anchors.left: parent.left
+    anchors.right: parent.right
+    text-align: center
+    text: Use:
+
+  BotContainer
+    id: UseItems
+    anchors.top: prev.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    height: 32
+
+  Label
+    anchors.top: prev.bottom
+    margin-top: 5
+    anchors.left: parent.left
+    anchors.right: parent.right
+    text-align: center
+    text: Drop if below 150 cap:
+
+  BotContainer
+    id: CapItems
+    anchors.top: prev.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    height: 32   
+]])
+
+edit:hide()
+
+local showEdit = false
+dropper.settings.onClick = function(widget)
+  showEdit = not showEdit
+  if showEdit then
+    edit:show()
+  else
+    edit:hide()
+  end
+end
+
+dropper.title:setOn(cfg.dropperEnabled)
+
+dropper.title.onClick = function(widget)
+  cfg.dropperEnabled = not widget:isOn()
+  widget:setOn(cfg.dropperEnabled)
+  saveDropperItens()
+end
+
+UI.Container(function()
+  cfg.dropper.trashItems = edit.TrashItems:getItems()
+  saveDropperItens()
+end, true, nil, edit.TrashItems)
+edit.TrashItems:setItems(cfg.dropper.trashItems)
+
+UI.Container(function()
+  cfg.dropper.useItems = edit.UseItems:getItems()
+  saveDropperItens()
+end, true, nil, edit.UseItems)
+edit.UseItems:setItems(cfg.dropper.useItems)
+
+UI.Container(function()
+  cfg.dropper.capItems = edit.CapItems:getItems()
+  saveDropperItens()
+end, true, nil, edit.CapItems)
+edit.CapItems:setItems(cfg.dropper.capItems)
+
+local function properTable(t)
+  local r = {}
+
+  for _, entry in pairs(t or {}) do
+    local id = type(entry) == "table" and entry.id or entry
+    id = tonumber(id)
+    if id and id > 0 then
+      table.insert(r, id)
+    end
+  end
+
+  return r
+end
+
+macro(200, function()
+  if not cfg.dropperEnabled then return end
+
+  local tables = {
+    properTable(cfg.dropper.capItems),
+    properTable(cfg.dropper.useItems),
+    properTable(cfg.dropper.trashItems)
+  }
+
+  local containers = getContainers()
+  for i = 1, 3 do
+    for _, container in pairs(containers) do
+      for _, item in ipairs(container:getItems()) do
+        for _, userItem in ipairs(tables[i]) do
+          if item:getId() == userItem then
+            return i == 1 and freecap() < 150 and dropItem(item) or
+                   i == 2 and use(item) or
+                   i == 3 and dropItem(item)
+          end
+        end
+      end
+    end
+  end
+end)
+
+UI.Separator()
+
+-- =========================
+-- PARTY
+-- =========================
+setDefaultTab("Tools")
+
+local panelPartyName = "autoParty"
+
+charStorage = charStorage or loadCharStorage()
+
+charStorage[panelPartyName] = charStorage[panelPartyName] or {
+  leaderName = "Leader",
+  autoPartyList = {},
+  enabled = false,
+  onMove = false,
+  soulider = false,
+  autoShare = false,
+
+  palavraInvite = "",
+  soulider2 = false,
+  minLevel = "",
+  maxLevel = "",
+  palavraPedirPT = "",
+  pedirParty = false,
+  aceitarParty = false,
+  banListPlayers = {},
+  selectedTab = "invite",
+  maxPartyPlayers = 30
+}
+
+local cfgParty = charStorage[panelPartyName]
+
+local function clampMaxPartyPlayers(value)
+  value = tonumber(value) or 30
+  value = math.floor(value)
+  if value < 1 then value = 1 end
+  if value > 30 then value = 30 end
+  return value
+end
+
+local function getMaxPartyPlayers()
+  cfgParty.maxPartyPlayers = clampMaxPartyPlayers(cfgParty.maxPartyPlayers)
+  return cfgParty.maxPartyPlayers
+end
+
+local function saveAutoParty()
+  saveCharStorage(charStorage)
+end
+
+if cfgParty.onMove == nil then cfgParty.onMove = false end
+if cfgParty.soulider == nil then cfgParty.soulider = false end
+if cfgParty.autoShare == nil then cfgParty.autoShare = false end
+if cfgParty.leaderName == nil then cfgParty.leaderName = "" end
+if not cfgParty.autoPartyList then cfgParty.autoPartyList = {} end
+if cfgParty.enabled == nil then cfgParty.enabled = true end
+
+if cfgParty.palavraInvite == nil then cfgParty.palavraInvite = "" end
+if cfgParty.soulider2 == nil then cfgParty.soulider2 = false end
+if cfgParty.minLevel == nil then cfgParty.minLevel = "" end
+if cfgParty.maxLevel == nil then cfgParty.maxLevel = "" end
+if cfgParty.palavraPedirPT == nil then cfgParty.palavraPedirPT = "" end
+if cfgParty.pedirParty == nil then cfgParty.pedirParty = false end
+if cfgParty.aceitarParty == nil then cfgParty.aceitarParty = false end
+if not cfgParty.banListPlayers then cfgParty.banListPlayers = {} end
+if cfgParty.selectedTab == nil then cfgParty.selectedTab = "invite" end
+if cfgParty.maxPartyPlayers == nil then cfgParty.maxPartyPlayers = 30 end
+cfgParty.maxPartyPlayers = clampMaxPartyPlayers(cfgParty.maxPartyPlayers)
+
+saveAutoParty()
+
+autopartyui = setupUI([[
+Panel
+  height: 18
+
+  BotSwitch
+    id: status
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    text-align: center
+    height: 18
+    margin-right: 45
+    text: Auto Party
+    color: white
+
+  Button
+    id: editPlayerList
+    anchors.top: prev.top
+    anchors.left: prev.right
+    anchors.right: parent.right
+    margin-left: 0
+    height: 18
+    text: Config
+    color: white
+
+]], parent)
+
+g_ui.loadUIFromString([[
+AutoPartyName < Label
+  height: 20
+  focusable: true
+  background-color: alpha
+  opacity: 1.00
+  margin-top: 1
+  margin-left: 2
+  padding-left: 4
+  color: white
+  font: verdana-11px-rounded
+
+  $hover:
+    background-color: #2F2F2F
+    opacity: 0.85
+
+  $focus:
+    background-color: #404040
+    opacity: 0.95
+
+  Button
+    id: remove
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    width: 18
+    height: 18
+    margin-right: 4
+    text: X
+    color: #FF4040
+    image-color: #363636
+    image-source: /images/ui/button_rounded
+
+AutoPartyBanName < Label
+  height: 20
+  focusable: true
+  background-color: alpha
+  opacity: 1.00
+  margin-top: 1
+  margin-left: 2
+  padding-left: 4
+  color: white
+  font: verdana-11px-rounded
+
+  $hover:
+    background-color: #2F2F2F
+    opacity: 0.85
+
+  $focus:
+    background-color: #404040
+    opacity: 0.95
+
+  Button
+    id: remove
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    width: 18
+    height: 18
+    margin-right: 4
+    text: X
+    color: #FF4040
+    image-color: #363636
+    image-source: /images/ui/button_rounded
+
+AutoPartyListWindow < MainWindow
+  text: Panel Auto Party
+  size: 430 370
+  anchors.centerIn: parent
+  margin-top: -60
+
+  Button
+    id: tabInvite
+    checkable: true
+    anchors.top: parent.top
+    anchors.left: parent.left
+    height: 33
+    margin-left: -5
+    width: 134
+    text-align: center
+    text: Invite List
+
+    UIItem
+      id: idInvite
+      anchors.top: parent.top
+      anchors.left: parent.left
+      margin-top: -3
+      margin-left: -10
+      size: 33 33
+      padding: 3
+      phantom: true
+
+    UIWidget
+      id: activeLine
+      anchors.left: prev.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin-left: 35
+      margin-right: 3
+      height: 2
+      background-color: #d7c08a
+      visible: false
+      phantom: true
+
+  Button
+    id: tabSay
+    checkable: true
+    anchors.verticalCenter: tabInvite.verticalCenter
+    anchors.left: tabInvite.right
+    height: 33
+    margin-left: 0
+    width: 134
+    text-align: center
+    text: Say PT
+
+    UIItem
+      id: idSay
+      anchors.top: parent.top
+      anchors.left: parent.left
+      margin-top: -9
+      margin-left: -13
+      size: 36 36
+      padding: 3
+      phantom: true
+
+    UIWidget
+      id: activeLine
+      anchors.left: prev.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin-left: 38
+      margin-right: 3
+      height: 2
+      background-color: #d7c08a
+      visible: false
+      phantom: true
+
+  Button
+    id: tabBan
+    checkable: true
+    anchors.verticalCenter: tabSay.verticalCenter
+    anchors.left: tabSay.right
+    height: 33
+    margin-left: 0
+    width: 134
+    text-align: center
+    text: Ban List
+
+    UIItem
+      id: idBan
+      anchors.top: parent.top
+      anchors.left: parent.left
+      margin-top: -2
+      margin-left: -8
+      size: 33 33
+      padding: 3
+      phantom: true
+
+    UIWidget
+      id: activeLine
+      anchors.left: prev.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin-left: 35
+      margin-right: 3
+      height: 2
+      background-color: #d7c08a
+      visible: false
+      phantom: true
+
+  FlatPanel
+    id: flatInvite
+    anchors.top: tabInvite.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin-bottom: 20
+    margin-left: -5
+    margin-top: 6
+    margin-right: -5
+
+    Label
+      id: labeltxtLeader
+      text: Leader Name
+      anchors.top: parent.top
+      anchors.left: parent.left
+      margin-top: 7
+      margin-left: 10
+      font: verdana-11px-rounded
+      text-auto-resize: true
+
+    TextEdit
+      id: txtLeader
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 3
+      margin-left: 8
+      margin-right: 8
+      height: 20
+      placeholder: Leader name
+
+    CheckBox
+      id: soulider
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 6
+      margin-left: 8
+      text: I'm Leader
+      text-auto-resize: true
+
+    CheckBox
+      id: creatureMove
+      anchors.top: soulider.top
+      anchors.left: soulider.right
+      margin-left: 28
+      text: Automatic Invite
+      text-auto-resize: true
+
+    CheckBox
+      id: autoShare
+      anchors.top: soulider.top
+      anchors.left: creatureMove.right
+      margin-left: 28
+      text: Auto Share
+      text-auto-resize: true
+
+    HorizontalSeparator
+      anchors.top: soulider.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 7
+      margin-left: 8
+      margin-right: 8
+
+    Label
+      text: Party Invite List
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 6
+      margin-left: 10
+      font: verdana-11px-rounded
+      text-auto-resize: true
+
+    TextList
+      id: lstAutoParty
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 4
+      margin-left: 8
+      margin-right: 15
+      height: 145
+      padding: 1
+      vertical-scrollbar: AutoPartyListListScrollBar
+      font: verdana-11px-rounded
+
+    VerticalScrollBar
+      id: AutoPartyListListScrollBar
+      anchors.top: lstAutoParty.top
+      anchors.bottom: lstAutoParty.bottom
+      anchors.left: lstAutoParty.right
+      step: 14
+      pixels-scroll: true
+      visible: true
+
+    TextEdit
+      id: playerName
+      anchors.top: lstAutoParty.bottom
+      anchors.left: parent.left
+      anchors.right: addPlayer.left
+      margin-top: 7
+      margin-left: 8
+      margin-right: 5
+      height: 20
+      placeholder: Player Name
+
+    Button
+      id: addPlayer
+      text: +
+      anchors.right: parent.right
+      anchors.top: lstAutoParty.bottom
+      margin-top: 7
+      width: 45
+      height: 20
+      margin-right: 8
+
+  FlatPanel
+    id: flatSay
+    anchors.top: flatInvite.top
+    anchors.left: flatInvite.left
+    anchors.right: flatInvite.right
+    anchors.bottom: flatInvite.bottom
+
+    Label
+      text: Party Say Keyword
+      anchors.top: parent.top
+      anchors.left: parent.left
+      margin-top: 7
+      margin-left: 10
+      font: verdana-11px-rounded
+      text-auto-resize: true
+
+    TextEdit
+      id: palavraInvite
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 3
+      margin-left: 8
+      margin-right: 8
+      height: 20
+      placeholder: Keyword
+
+    CheckBox
+      id: soulider2
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 6
+      margin-left: 8
+      text: I'm Leader
+      text-auto-resize: true
+
+    HorizontalSeparator
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 7
+      margin-left: 8
+      margin-right: 8
+
+    Label
+      id: lvlminimolabel
+      text: Level Minimo:
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 7
+      margin-left: 10
+      font: verdana-11px-rounded
+      text-auto-resize: true
+
+    TextEdit
+      id: textMinLevel
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      width: 195
+      margin-top: 3
+      margin-left: 8
+      height: 20
+      placeholder: Level Minimum
+
+    Label
+      text: Level Maximo:
+      anchors.top: lvlminimolabel.top
+      anchors.left: parent.horizontalCenter
+      margin-top: 0
+      margin-left: 8
+      font: verdana-11px-rounded
+      text-auto-resize: true
+
+    TextEdit
+      id: textMaxLevel
+      anchors.top: prev.bottom
+      anchors.left: parent.horizontalCenter
+      anchors.right: parent.right
+      margin-top: 3
+      margin-left: 8
+      margin-right: 8
+      height: 20
+      placeholder: Level Maximum
+
+    Label
+      id: maxPartyPlayersLabel
+      text: Max Party Players: 30
+      anchors.top: textMinLevel.bottom
+      anchors.left: parent.left
+      margin-top: 7
+      margin-left: 10
+      font: verdana-11px-rounded
+      text-auto-resize: true
+
+    HorizontalScrollBar
+      id: maxPartyPlayersScroll
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 4
+      margin-left: 8
+      margin-right: 8
+      minimum: 1
+      maximum: 30
+      step: 1
+
+    HorizontalSeparator
+      anchors.top: maxPartyPlayersScroll.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 8
+      margin-left: 8
+      margin-right: 8
+
+    Label
+      text: Ask Party Message
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 7
+      margin-left: 10
+      font: verdana-11px-rounded
+      text-auto-resize: true
+
+    TextEdit
+      id: palavraPedirPT
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 3
+      margin-left: 8
+      margin-right: 8
+      height: 20
+      placeholder: Ask for party
+
+    CheckBox
+      id: pedirParty
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      margin-top: 7
+      margin-left: 8
+      text: Request Party
+      text-auto-resize: true
+
+    CheckBox
+      id: aceitarParty
+      anchors.top: pedirParty.top
+      anchors.left: pedirParty.right
+      margin-left: 36
+      text: Accept Party
+      text-auto-resize: true
+
+  FlatPanel
+    id: flatBan
+    anchors.top: flatInvite.top
+    anchors.left: flatInvite.left
+    anchors.right: flatInvite.right
+    anchors.bottom: flatInvite.bottom
+
+    Label
+      text: Players Banidos
+      anchors.top: parent.top
+      anchors.horizontalCenter: parent.horizontalCenter
+      margin-top: 7
+      font: verdana-11px-rounded
+      text-auto-resize: true
+
+    HorizontalSeparator
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 5
+      margin-left: 8
+      margin-right: 8
+
+    TextList
+      id: lstBan
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 6
+      margin-left: 8
+      margin-right: 15
+      height: 197
+      padding: 1
+      vertical-scrollbar: AutoPartyBanListScrollBar
+      font: verdana-11px-rounded
+
+    VerticalScrollBar
+      id: AutoPartyBanListScrollBar
+      anchors.top: lstBan.top
+      anchors.bottom: lstBan.bottom
+      anchors.left: lstBan.right
+      step: 14
+      pixels-scroll: true
+      visible: true
+
+    TextEdit
+      id: txtBan
+      anchors.left: parent.left
+      anchors.top: lstBan.bottom
+      anchors.right: btnAddBan.left
+      margin-top: 7
+      margin-left: 8
+      margin-right: 5
+      height: 20
+      placeholder: Player Name
+
+    Button
+      id: btnAddBan
+      text: +
+      anchors.right: parent.right
+      anchors.top: lstBan.bottom
+      margin-top: 7
+      width: 45
+      height: 20
+      margin-right: 8
+
+  Button
+    id: closePanel
+    anchors.left: flatInvite.left
+    anchors.right: flatInvite.right
+    anchors.top: flatInvite.bottom
+    margin-top: 5
+    height: 20
+    text: Close
+]])
+
+local rootWidget = g_ui.getRootWidget()
+if rootWidget then
+  tcAutoParty = autopartyui.status
+
+  autoPartyListWindow = UI.createWindow("AutoPartyListWindow", rootWidget)
+  autoPartyListWindow:hide()
+
+
+  local function WParty(root, id)
+    if not root or not id then return nil end
+
+    if root.getChildById then
+      local ok, child = pcall(function() return root:getChildById(id) end)
+      if ok and child then return child end
+    end
+
+    if root.recursiveGetChildById then
+      local ok, child = pcall(function() return root:recursiveGetChildById(id) end)
+      if ok and child then return child end
+    end
+
+    if root.getChildren then
+      local ok, childs = pcall(function() return root:getChildren() end)
+      if ok and childs then
+        for i = 1, #childs do
+          local child = childs[i]
+          if child and child.getId then
+            local okId, childId = pcall(function() return child:getId() end)
+            if okId and childId == id then return child end
+          end
+
+          local found = WParty(child, id)
+          if found then return found end
+        end
+      end
+    end
+
+    return nil
+  end
+
+  local function showPartyWidget(widget, visible)
+    if not widget then return end
+    if visible then
+      if widget.show then widget:show() end
+    else
+      if widget.hide then widget:hide() end
+    end
+  end
+
+  local function setPartyTabPressed(button, pressed)
+    if not button then return end
+    showPartyWidget(WParty(button, "activeLine"), pressed)
+
+    if button.setChecked then pcall(function() button:setChecked(pressed) end) end
+    if button.setPressed then pcall(function() button:setPressed(pressed) end) end
+    if button.setOn then pcall(function() button:setOn(pressed) end) end
+    if button.setOpacity then button:setOpacity(pressed and 1.00 or 0.74) end
+    if button.setColor then button:setColor(pressed and "#d7c08a" or "#d6d6d6") end
+  end
+
+  local function setPartyTab(tab)
+    if tab ~= "invite" and tab ~= "say" and tab ~= "ban" then tab = "invite" end
+
+    cfgParty.selectedTab = tab
+
+    showPartyWidget(autoPartyListWindow.flatInvite, tab == "invite")
+    showPartyWidget(autoPartyListWindow.flatSay, tab == "say")
+    showPartyWidget(autoPartyListWindow.flatBan, tab == "ban")
+
+    setPartyTabPressed(autoPartyListWindow.tabInvite, tab == "invite")
+    setPartyTabPressed(autoPartyListWindow.tabSay, tab == "say")
+    setPartyTabPressed(autoPartyListWindow.tabBan, tab == "ban")
+
+    saveAutoParty()
+  end
+
+  local function setPartyIcon(widget, id)
+    if widget and widget.setItemId then
+      pcall(function() widget:setItemId(tonumber(id) or 0) end)
+    end
+  end
+
+  local function bindPartyWindowIds()
+    local ids = {
+      "tabInvite", "tabSay", "tabBan",
+      "flatInvite", "flatSay", "flatBan",
+      "txtLeader", "soulider", "creatureMove", "autoShare",
+      "lstAutoParty", "playerName", "addPlayer",
+      "palavraInvite", "soulider2", "textMinLevel", "textMaxLevel",
+      "palavraPedirPT", "pedirParty", "aceitarParty",
+      "maxPartyPlayersLabel", "maxPartyPlayersScroll",
+      "lstBan", "txtBan", "btnAddBan", "closePanel"
+    }
+
+    for i = 1, #ids do
+      local id = ids[i]
+      if not autoPartyListWindow[id] then
+        autoPartyListWindow[id] = WParty(autoPartyListWindow, id)
+      end
+    end
+
+    if autoPartyListWindow.tabInvite and not autoPartyListWindow.tabInvite.idInvite then
+      autoPartyListWindow.tabInvite.idInvite = WParty(autoPartyListWindow.tabInvite, "idInvite")
+    end
+
+    if autoPartyListWindow.tabSay and not autoPartyListWindow.tabSay.idSay then
+      autoPartyListWindow.tabSay.idSay = WParty(autoPartyListWindow.tabSay, "idSay")
+    end
+
+    if autoPartyListWindow.tabBan and not autoPartyListWindow.tabBan.idBan then
+      autoPartyListWindow.tabBan.idBan = WParty(autoPartyListWindow.tabBan, "idBan")
+    end
+  end
+
+  bindPartyWindowIds()
+
+  -- Troque estes IDs se quiser outros icones nas abas.
+  setPartyIcon(autoPartyListWindow.tabInvite and autoPartyListWindow.tabInvite.idInvite, 31717)
+  setPartyIcon(autoPartyListWindow.tabSay and autoPartyListWindow.tabSay.idSay, 24432)
+  setPartyIcon(autoPartyListWindow.tabBan and autoPartyListWindow.tabBan.idBan, 3547)
+
+  if autoPartyListWindow.tabInvite then
+    autoPartyListWindow.tabInvite.onClick = function()
+      setPartyTab("invite")
+    end
+  end
+
+  if autoPartyListWindow.tabSay then
+    autoPartyListWindow.tabSay.onClick = function()
+      setPartyTab("say")
+    end
+  end
+
+  if autoPartyListWindow.tabBan then
+    autoPartyListWindow.tabBan.onClick = function()
+      setPartyTab("ban")
+    end
+  end
+
+  setPartyTab(cfgParty.selectedTab or "invite")
+
+  autopartyui.status.onMouseRelease = function(widget, mousePos, mouseButton)
+    if mouseButton == 2 then
+      if not autoPartyListWindow:isVisible() then
+        autoPartyListWindow:show()
+        autoPartyListWindow:raise()
+        autoPartyListWindow:focus()
+      else
+        autoPartyListWindow:hide()
+      end
+    end
+  end
+
+  autopartyui.editPlayerList.onClick = function()
+    autoPartyListWindow:show()
+    autoPartyListWindow:raise()
+    autoPartyListWindow:focus()
+  end
+
+  if autoPartyListWindow.closePanel then
+    autoPartyListWindow.closePanel.onClick = function()
+      autoPartyListWindow:hide()
+    end
+  end
+
+  -- =========================
+  -- LISTA
+  -- =========================
+  if cfgParty.autoPartyList and #cfgParty.autoPartyList > 0 then
+    for _, pName in ipairs(cfgParty.autoPartyList) do
+      local label = g_ui.createWidget("AutoPartyName", autoPartyListWindow.lstAutoParty)
+      label.remove.onClick = function()
+        table.removevalue(cfgParty.autoPartyList, label:getText())
+        label:destroy()
+        saveAutoParty()
+      end
+      label:setText(pName)
+    end
+  end
+
+  autoPartyListWindow.addPlayer.onClick = function()
+    local pName = autoPartyListWindow.playerName:getText()
+    if pName:len() > 0 and not (table.contains(cfgParty.autoPartyList, pName, true) or cfgParty.leaderName == pName) then
+      table.insert(cfgParty.autoPartyList, pName)
+      saveAutoParty()
+
+      local label = g_ui.createWidget("AutoPartyName", autoPartyListWindow.lstAutoParty)
+      label.remove.onClick = function()
+        table.removevalue(cfgParty.autoPartyList, label:getText())
+        label:destroy()
+        saveAutoParty()
+      end
+      label:setText(pName)
+      autoPartyListWindow.playerName:setText("")
+    end
+  end
+
+  autoPartyListWindow.playerName.onKeyPress = function(_, keyCode)
+    if keyCode ~= 5 then return false end
+    autoPartyListWindow.addPlayer.onClick()
+    return true
+  end
+
+  autoPartyListWindow.playerName.onTextChange = function(_, text)
+    if table.contains(cfgParty.autoPartyList, text, true) then
+      autoPartyListWindow.addPlayer:setColor("#FF0000")
+    else
+      autoPartyListWindow.addPlayer:setColor("#FFFFFF")
+    end
+  end
+
+  -- =========================
+  -- ENABLE
+  -- =========================
+  tcAutoParty:setOn(cfgParty.enabled == true)
+  tcAutoParty.onClick = function(widget)
+    cfgParty.enabled = not (cfgParty.enabled == true)
+    widget:setOn(cfgParty.enabled)
+    saveAutoParty()
+  end
+
+  -- =========================
+  -- AUTOMATIC INVITE
+  -- =========================
+  autoPartyListWindow.creatureMove:setChecked(cfgParty.onMove == true)
+  autoPartyListWindow.creatureMove.onClick = function(widget)
+    cfgParty.onMove = not (cfgParty.onMove == true)
+    widget:setChecked(cfgParty.onMove)
+    saveAutoParty()
+  end
+
+  -- =========================
+  -- TXT LEADER
+  -- =========================
+  autoPartyListWindow.txtLeader.onTextChange = function(_, text)
+    cfgParty.leaderName = text
+    saveAutoParty()
+  end
+  autoPartyListWindow.txtLeader:setText(cfgParty.leaderName or "")
+
+  -- =========================
+  -- SOU LIDER
+  -- =========================
+  autoPartyListWindow.soulider:setChecked(cfgParty.soulider == true)
+
+  local function applySouLider()
+    if cfgParty.soulider then
+      local myName = player:getName()
+      cfgParty.leaderName = myName
+      autoPartyListWindow.txtLeader:setText(myName)
+    else
+      cfgParty.leaderName = ""
+      autoPartyListWindow.txtLeader:setText("")
+    end
+    saveAutoParty()
+  end
+
+  autoPartyListWindow.soulider.onClick = function(widget)
+    cfgParty.soulider = not (cfgParty.soulider == true)
+    widget:setChecked(cfgParty.soulider)
+    applySouLider()
+  end
+
+  applySouLider()
+
+  -- =========================
+  -- AUTO SHAREAR
+  -- =========================
+  autoPartyListWindow.autoShare:setChecked(cfgParty.autoShare == true)
+  autoPartyListWindow.autoShare.onClick = function(widget)
+    cfgParty.autoShare = not (cfgParty.autoShare == true)
+    widget:setChecked(cfgParty.autoShare)
+    saveAutoParty()
+  end
+
+  macro(2000, function()
+    if not tcAutoParty:isOn() then return end
+    if cfgParty.autoShare then
+      if player:isPartyLeader() then
+        if not player:isPartySharedExperienceActive() then
+          g_game.partyShareExperience(true)
+        end
+      end
+    end
+  end)
+
+  -- =========================
+  -- LADO DIREITO
+  -- =========================
+  autoPartyListWindow.palavraInvite:setText(cfgParty.palavraInvite or "")
+  autoPartyListWindow.palavraInvite.onTextChange = function(_, text)
+    cfgParty.palavraInvite = text or ""
+    saveAutoParty()
+  end
+
+  autoPartyListWindow.soulider2:setChecked(cfgParty.soulider2 == true)
+  autoPartyListWindow.soulider2.onClick = function(widget)
+    cfgParty.soulider2 = not (cfgParty.soulider2 == true)
+    widget:setChecked(cfgParty.soulider2)
+    saveAutoParty()
+  end
+
+  autoPartyListWindow.textMinLevel:setText(tostring(cfgParty.minLevel or ""))
+  autoPartyListWindow.textMinLevel.onTextChange = function(_, text)
+    cfgParty.minLevel = text or ""
+    saveAutoParty()
+  end
+
+  autoPartyListWindow.textMaxLevel:setText(tostring(cfgParty.maxLevel or ""))
+  autoPartyListWindow.textMaxLevel.onTextChange = function(_, text)
+    cfgParty.maxLevel = text or ""
+    saveAutoParty()
+  end
+
+  autoPartyListWindow.palavraPedirPT:setText(cfgParty.palavraPedirPT or "")
+  autoPartyListWindow.palavraPedirPT.onTextChange = function(_, text)
+    cfgParty.palavraPedirPT = text or ""
+    saveAutoParty()
+  end
+
+  autoPartyListWindow.pedirParty:setChecked(cfgParty.pedirParty == true)
+  autoPartyListWindow.pedirParty.onClick = function(widget)
+    cfgParty.pedirParty = not (cfgParty.pedirParty == true)
+    widget:setChecked(cfgParty.pedirParty)
+    saveAutoParty()
+  end
+
+  autoPartyListWindow.aceitarParty:setChecked(cfgParty.aceitarParty == true)
+  autoPartyListWindow.aceitarParty.onClick = function(widget)
+    cfgParty.aceitarParty = not (cfgParty.aceitarParty == true)
+    widget:setChecked(cfgParty.aceitarParty)
+    saveAutoParty()
+  end
+
+  -- =========================
+  -- MAX PARTY PLAYERS
+  -- =========================
+  local loadingMaxPartyPlayers = false
+
+  local function updateMaxPartyPlayersLabel()
+    if autoPartyListWindow.maxPartyPlayersLabel then
+      autoPartyListWindow.maxPartyPlayersLabel:setText("Max Party Players: " .. getMaxPartyPlayers())
+    end
+  end
+
+  local function setMaxPartyScrollValue(value)
+    local scroll = autoPartyListWindow.maxPartyPlayersScroll
+    if not scroll then return end
+
+    if scroll.setMinimum then pcall(function() scroll:setMinimum(1) end) end
+    if scroll.setMaximum then pcall(function() scroll:setMaximum(30) end) end
+    if scroll.setStep then pcall(function() scroll:setStep(1) end) end
+    if scroll.setValue then pcall(function() scroll:setValue(clampMaxPartyPlayers(value)) end) end
+  end
+
+  local function readMaxPartyScrollValue(widget, value)
+    local v = tonumber(value)
+    if not v and widget and widget.getValue then
+      local ok, result = pcall(function() return widget:getValue() end)
+      if ok then v = tonumber(result) end
+    end
+    return clampMaxPartyPlayers(v)
+  end
+
+  local function saveMaxPartyPlayersFromScroll(widget, value)
+    if loadingMaxPartyPlayers then return end
+    cfgParty.maxPartyPlayers = readMaxPartyScrollValue(widget, value)
+    updateMaxPartyPlayersLabel()
+    saveAutoParty()
+  end
+
+  loadingMaxPartyPlayers = true
+  setMaxPartyScrollValue(getMaxPartyPlayers())
+  loadingMaxPartyPlayers = false
+  updateMaxPartyPlayersLabel()
+
+  if autoPartyListWindow.maxPartyPlayersScroll then
+    autoPartyListWindow.maxPartyPlayersScroll.onValueChange = saveMaxPartyPlayersFromScroll
+    autoPartyListWindow.maxPartyPlayersScroll.onValueChanged = saveMaxPartyPlayersFromScroll
+  end
+
+  -- =========================
+  -- BAN LIST
+  -- =========================
+  local function reloadBanList()
+    if not autoPartyListWindow.lstBan then return end
+    autoPartyListWindow.lstBan:destroyChildren()
+
+    for _, name in ipairs(cfgParty.banListPlayers or {}) do
+      local row = g_ui.createWidget("AutoPartyBanName", autoPartyListWindow.lstBan)
+      row:setText(name)
+      row.remove.onClick = function()
+        table.removevalue(cfgParty.banListPlayers, row:getText())
+        row:destroy()
+        saveAutoParty()
+      end
+    end
+  end
+
+  reloadBanList()
+
+  autoPartyListWindow.btnAddBan.onClick = function()
+    local name = autoPartyListWindow.txtBan:getText()
+    if not name or name:len() == 0 then return end
+
+    if not table.contains(cfgParty.banListPlayers, name, true) then
+      table.insert(cfgParty.banListPlayers, name)
+      saveAutoParty()
+      reloadBanList()
+    end
+
+    autoPartyListWindow.txtBan:setText("")
+  end
+
+  autoPartyListWindow.txtBan.onKeyPress = function(_, keyCode)
+    if keyCode ~= 5 then return false end
+    autoPartyListWindow.btnAddBan.onClick()
+    return true
+  end
+
+  -- =========================
+  -- MENSAGENS
+  -- =========================
+  onTextMessage(function(mode, text)
+    if not tcAutoParty:isOn() then return end
+    if mode ~= 20 then return end
+
+    if text:find("has joined the party") then
+      local data = regexMatch(text, "([a-z A-Z-]*) has joined the party")[1][2]
+      if data and table.contains(cfgParty.autoPartyList, data, true) then
+        if cfgParty.autoShare and not player:isPartySharedExperienceActive() then
+          g_game.partyShareExperience(true)
+        end
+      end
+      return
+    end
+
+    if text:find("has invited you") then
+      if player:getName():lower() == (cfgParty.leaderName or ""):lower() then
+        return
+      end
+
+      local data = regexMatch(text, "([a-z A-Z-]*) has invited you")[1][2]
+      if data and (cfgParty.leaderName or ""):lower() == data:lower() then
+        local leader = getCreatureByName(data, true)
+        if leader then
+          g_game.partyJoin(leader:getId())
+          return
+        end
+      end
+    end
+  end)
+
+  -- =========================
+  -- INVITES
+  -- =========================
+  local function creatureInvites(creature)
+    if not creature:isPlayer() or creature == player then return end
+
+    if creature:getName():lower() == (cfgParty.leaderName or ""):lower() then
+      if creature:getShield() == 1 then
+        g_game.partyJoin(creature:getId())
+        return
+      end
+    end
+
+    if player:getName():lower() ~= (cfgParty.leaderName or ""):lower() then return end
+    if not table.contains(cfgParty.autoPartyList, creature:getName(), true) then return end
+    if creature:isPartyMember() or creature:getShield() == 2 then return end
+
+    g_game.partyInvite(creature:getId())
+  end
+
+  onCreatureAppear(function(creature)
+    if tcAutoParty:isOn() then
+      creatureInvites(creature)
+    end
+  end)
+
+  onCreaturePositionChange(function(creature)
+    if tcAutoParty:isOn() and cfgParty.onMove then
+      creatureInvites(creature)
+    end
+  end)
+end
+
+-- =====================================================
+-- == LÓGICA COMPLETA AUTO PARTY
+-- =====================================================
+local infoTime = 0
+local talkTime = 0
+local justForInfo = true
+local canSeeInfo = true
+local partyMembersCount = 0
+
+local lastInfoAt = 0
+local lastUnlockAt = 0
+
+local lastCloseAt = 0
+
+macro(1000, function()
+  if not cfgParty.enabled then return end
+
+  local now = os.time()
+
+  if fecharPaineis and fecharPaineis > 0 and now <= fecharPaineis then
+    if lastCloseAt == 0 or (now - lastCloseAt) >= 3 then
+      local root = g_ui.getRootWidget()
+      if root then
+        for _, widget in ipairs(root:recursiveGetChildren()) do
+          if widget:getStyleName() == 'MessageBoxLabel' then
+            local parent = widget:getParent()
+            if parent and parent.destroy then
+              parent:destroy()
+            end
+            lastCloseAt = now
+            break
+          end
+        end
+      end
+    end
+  end
+
+  if not cfgParty.soulider2 then
+    justForInfo = true
+    partyMembersCount = 0
+    infoTime = 0
+    lastInfoAt = 0
+    canSeeInfo = true
+    return
+  end
+
+  if not player:isPartyLeader() then
+    justForInfo = true
+    partyMembersCount = 0
+    infoTime = 0
+    lastInfoAt = 0
+    canSeeInfo = true
+    return
+  end
+
+  if not canSeeInfo then
+    if lastUnlockAt == 0 then lastUnlockAt = now end
+    if (now - lastUnlockAt) >= 3 then
+      canSeeInfo = true
+      lastUnlockAt = 0
+    end
+  end
+
+  if justForInfo and canSeeInfo then
+    local partyId = getChannelId("party")
+    if partyId then
+      sayChannel(partyId, "!party info")
+    else
+      say("!party info")
+    end
+
+    fecharPaineis = now + 5
+    lastInfoAt = now
+    return
+  end
+
+  if canSeeInfo and (lastInfoAt == 0 or (now - lastInfoAt) >= 15) then
+    local partyId = getChannelId("party")
+    if partyId then
+      sayChannel(partyId, "!party info")
+    else
+      say("!party info")
+    end
+
+    fecharPaineis = now + 5
+    lastInfoAt = now
+    return
+  end
+
+  if talkTime > 0 then
+    talkTime = talkTime - 1
+  end
+end)
+
+onLoginAdvice(function(text)
+  if not cfgParty.enabled or not cfgParty.soulider2 then return end
+  if not player:isPartyLeader() then return end
+
+  local explode1 = string.explode(text, "*")
+  local explode2 = string.explode(explode1[8], ":")[2]
+
+  local rawMax = tonumber(string.explode(explode1[4], ":")[2]) or 0
+  local rawMin = tonumber(string.explode(explode1[3], ":")[2]) or 0
+  
+  local calcMax = math.ceil(rawMax * 1.5)
+  local calcMin = math.ceil(rawMin * 0.66)
+
+  cfgParty.maxLevel = tostring(calcMax)
+  cfgParty.minLevel = tostring(calcMin)
+  saveAutoParty()
+
+  autoPartyListWindow.textMaxLevel:setText(cfgParty.maxLevel)
+  autoPartyListWindow.textMinLevel:setText(cfgParty.minLevel)
+
+  partyMembersCount = tonumber(string.explode(explode1[2], ":")[2]) or 0
+  if justForInfo then
+    justForInfo = false
+    return
+  end
+
+  if explode2:find(",") then
+    local names = string.explode(explode2, ",")
+    for i = 1, #names do
+      canSeeInfo = false
+      schedule(10 * i, function()
+        if i == #names then
+          canSeeInfo = true
+        end
+        sayChannel(getChannelId("party"), "!party kick," .. names[i])
+      end)
+    end
+  elseif explode2 ~= "" then
+    schedule(10, function() sayChannel(getChannelId("party"), "!party kick," .. explode2) end)
+  end
+end)
+
+onTalk(function(name, level, mode, text, channelId, pos)
+  if not cfgParty.enabled or not cfgParty.soulider2 then return end
+  if name == player:getName() then return end
+
+  local keyword = cfgParty.palavraInvite:lower()
+  if keyword == "" then return end
+
+  if text:lower():find(keyword) then
+    if table.contains(cfgParty.banListPlayers, name, true) then
+      g_game.talkPrivate(5, name, "You are banned from my party.")
+      return
+    end
+
+    local minL = tonumber(cfgParty.minLevel) or 0
+    local maxL = tonumber(cfgParty.maxLevel) or 9999
+    if level < minL or level > maxL then
+      g_game.talkPrivate(5, name, "Min level: " .. minL .. " | Max level: " .. maxL)
+      return
+    end
+
+    local maxPartyPlayers = getMaxPartyPlayers()
+    if partyMembersCount >= maxPartyPlayers then
+      g_game.talkPrivate(5, name, "Party is full (" .. maxPartyPlayers .. " members).")
+      return
+    end
+
+    local spec = getCreatureByName(name)
+    if spec then
+      if spec:isPartyMember() or spec:getShield() == 2 then return end
+      g_game.partyInvite(spec:getId())
+    end
+  end
+end)
+
+local lastAppearTalk = 0
+onCreatureAppear(function(creature)
+  if not cfgParty.enabled or not cfgParty.soulider2 then return end
+  if not creature:isPlayer() or creature:isLocalPlayer() then return end
+
+  if creature:isPartyMember() or creature:getShield() == 2 then return end
+
+  local now = os.time()
+
+  if partyMembersCount < getMaxPartyPlayers() and (lastAppearTalk == 0 or (now - lastAppearTalk) >= 10) then
+    local key = cfgParty.palavraInvite
+    if key and key ~= "" then
+      say("Fale '" .. key .. "' para ser invitado na party!")
+      lastAppearTalk = now
+    end
+  end
+end)
+
+onTextMessage(function(mode, text)
+  if not cfgParty.enabled or not cfgParty.soulider2 then return end
+  
+  local t = text:lower()
+  if t:find("you are now the leader") or t:find("has joined the party") or (t:find("has left the party") and canSeeInfo) then
+    justForInfo = true
+  end
+
+  if t:find("level para compartilhamento") then
+    local lMax, lMin = text:match("de (%d+) até (%d+)")
+    if lMin and lMax then
+      cfgParty.minLevel = lMin
+      cfgParty.maxLevel = lMax
+      saveAutoParty()
+
+      autoPartyListWindow.textMinLevel:setText(lMin)
+      autoPartyListWindow.textMaxLevel:setText(lMax)
+    end
+  end
+end)
+
+local lastsayparty = 0
+macro(200, function()
+  if not cfgParty.enabled then return end
+  if not cfgParty.pedirParty then return end
+
+  if player:getShield() > 2 then return end
+
+  local frase = cfgParty.palavraPedirPT
+  if not frase or frase == "" then return end
+
+  local now = os.time()
+
+  if (lastsayparty == 0 or (now - lastsayparty) >= 10) then
+    say(frase)
+    lastsayparty = now
+  end
+end)
+
+macro(200, function()
+  if not cfgParty.enabled then return end
+  if not cfgParty.aceitarParty then return end
+
+  if player:getShield() > 2 then return end
+
+  for _, spec in pairs(getSpectators(false)) do
+    if spec:isPlayer() and spec:getShield() == 1 then
+      g_game.partyJoin(spec:getId())
+      return
+    end
+  end
+end)
+
+
+-- =========================
+-- EATFOOD
+-- =========================
+
+UI.Separator()
+
+charStorage = charStorage or loadCharStorage()
+
+local function saveEatFood()
+  saveCharStorage(charStorage)
+end
+
+charStorage.eatFoodSystem = charStorage.eatFoodSystem or {
+  enabled = false,
+  foodItems = {3582, 3577}
+}
+
+local foodCfg = charStorage.eatFoodSystem
+
+if type(foodCfg.foodItems) ~= "table" then
+  foodCfg.foodItems = {3582, 3577}
+  saveEatFood()
+end
+
+eatFood = setupUI([[
+Panel
+  height: 19
+
+  BotSwitch
+    id: eatFood
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    text-align: center
+    text: Eat Food
+    height: 18
+    color: white
+]])
+
+eatFood.eatFood:setOn(foodCfg.enabled)
+
+eatFood.eatFood.onClick = function(widget)
+  foodCfg.enabled = not widget:isOn()
+  widget:setOn(foodCfg.enabled)
+  saveEatFood()
+end
+
+local foodContainer = UI.Container(function(widget, items)
+  foodCfg.foodItems = items
+  saveEatFood()
+end, true)
+
+foodContainer:setHeight(35)
+foodContainer:setItems(foodCfg.foodItems)
+
+local function getFoodIds()
+  local ids = {}
+
+  for _, entry in pairs(foodCfg.foodItems or {}) do
+    local id = nil
+
+    if type(entry) == "table" then
+      id = tonumber(entry.id)
+    else
+      id = tonumber(entry)
+    end
+
+    if id and id > 0 then
+      table.insert(ids, id)
+    end
+  end
+
+  return ids
+end
+
+local nextFoodUse = 0
+
+macro(500, function()
+  if not foodCfg.enabled then return end
+
+  local isOldClient = g_game.getClientVersion() <= 960
+
+  if isOldClient then
+    if nextFoodUse > now then
+      return
+    end
+  else
+    if player:getRegenerationTime() > 400 then
+      return
+    end
+  end
+
+  local foodIds = getFoodIds()
+  if #foodIds == 0 then return end
+
+  for _, foodId in ipairs(foodIds) do
+    use(foodId)
+
+    -- fallback antigo
+    local item = findItem(foodId)
+    if item then
+      use(item)
+
+      if isOldClient then
+        nextFoodUse = now + 60000
+      end
+
+      return
+    end
+  end
+end)
+
+----------------------------------
+--------STAMINA
+----------------------------------
+UI.Separator()
+
+charStorage = charStorage or loadCharStorage()
+
+charStorage.staminaUse = charStorage.staminaUse or {
+  enabled = false,
+  itemId = 0,
+  value = 1
+}
+
+local staminaCfg = charStorage.staminaUse
+
+local function saveStaminaUse()
+  saveCharStorage(charStorage)
+end
+
+stamina = setupUI([[
+Panel
+  height: 55
+
+  BotItem
+    id: staminaId
+    anchors.top: parent.top
+    anchors.left: parent.left
+
+  Label
+    id: Labelstamina
+    anchors.top: prev.top
+    anchors.left: prev.right
+    anchors.right: parent.right
+    margin-left: 8
+    height: 18
+    text-align: center
+    text: Stamina: 1h
+    color: gray
+
+  HorizontalScrollBar
+    id: stamina
+    anchors.top: prev.bottom
+    anchors.left: prev.left
+    anchors.right: prev.right
+    margin-top: 2
+    minimum: 1
+    maximum: 43
+
+  BotSwitch
+    id: staminacheck
+    anchors.top: staminaId.bottom
+    anchors.left: staminaId.left
+    anchors.right: prev.right
+    height: 18
+    text: Use Stamina
+    color: white
+    margin-top: 5
+]])
+
+local function updateStaminaLabel()
+  stamina.Labelstamina:setText("Stamina: " .. tostring(staminaCfg.value or 1) .. "h")
+end
+
+if stamina.staminaId.setItemId then
+  stamina.staminaId:setItemId(staminaCfg.itemId or 0)
+end
+
+stamina.staminaId.onItemChange = function(widget)
+  staminaCfg.itemId = widget:getItemId()
+  saveStaminaUse()
+end
+
+stamina.stamina:setValue(staminaCfg.value or 1)
+updateStaminaLabel()
+
+stamina.stamina.onValueChange = function(widget, value)
+  staminaCfg.value = value
+  updateStaminaLabel()
+  saveStaminaUse()
+end
+
+stamina.staminacheck:setOn(staminaCfg.enabled == true)
+
+stamina.staminacheck.onClick = function(widget)
+  staminaCfg.enabled = not widget:isOn()
+  widget:setOn(staminaCfg.enabled)
+  saveStaminaUse()
+end
+
+macro(1000, function()
+  if staminaCfg.enabled ~= true then return end
+
+  local itemId = tonumber(staminaCfg.itemId or 0)
+  if itemId <= 0 then return end
+
+  local minStamina = (tonumber(staminaCfg.value) or 1) * 60
+
+  if player:getStamina() <= minStamina then
+    use(itemId)
+    delay(5000)
+  end
+end)
+
+------------------------------
+--- VIPWARD / WARN DISCORD
+------------------------------
+UI.Separator()
+
+charStorage = charStorage or loadCharStorage()
+
+charStorage.warnDiscord = charStorage.warnDiscord or {
+  enabled = false,
+  location = "",
+  webhook = "",
+  warnGuild = false,
+  warnPlayer = false,
+  delayWarn = 5,
+  sayGuild = false,
+  discordWarn = false,
+  guildList = "",
+  playerList = ""
+}
+
+local warnCfg = charStorage.warnDiscord
+
+warnCfg.enabled = warnCfg.enabled == true
+warnCfg.location = tostring(warnCfg.location or "")
+warnCfg.webhook = tostring(warnCfg.webhook or "")
+warnCfg.warnGuild = warnCfg.warnGuild == true
+warnCfg.warnPlayer = warnCfg.warnPlayer == true
+warnCfg.delayWarn = tonumber(warnCfg.delayWarn) or 5
+warnCfg.sayGuild = warnCfg.sayGuild == true
+warnCfg.discordWarn = warnCfg.discordWarn == true
+warnCfg.guildList = tostring(warnCfg.guildList or "")
+warnCfg.playerList = tostring(warnCfg.playerList or "")
+
+local function saveWarn()
+  saveCharStorage(charStorage)
+end
+
+local cachedPlayerList = {}
+local cachedGuildList = {}
+
+local function trimWarn(s)
+  return tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function splitList(text)
+  local t = {}
+  for v in tostring(text or ""):gmatch("[^,]+") do
+    v = trimWarn(v):lower()
+    if v ~= "" then
+      t[v] = true
+    end
+  end
+  return t
+end
+
+local function rebuildLists()
+  cachedPlayerList = splitList(warnCfg.playerList)
+  cachedGuildList = splitList(warnCfg.guildList)
+end
+
+rebuildLists()
+
+warnButton = setupUI([[
+Panel
+  height: 19
+
+  BotSwitch
+    id: title
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    text-align: center
+    margin-right: 45
+    text: Warn Discord
+    height: 18
+    color: white
+
+  Button
+    id: settings
+    anchors.top: prev.top
+    anchors.left: prev.right
+    anchors.right: parent.right
+    margin-left: 2
+    height: 18
+    text: Config
+    opacity: 1.00
+    color: white
+]])
+
+warnInterface = setupUI([=[
+MainWindow
+  id: mainPanel
+  size: 260 315
+  text: Warn Discord
+  margin-top: -50
+
+  FlatPanel
+    id: flatp
+    anchors.fill: parent
+    margin: -6
+    margin-top: 2
+    margin-bottom: 20
+
+    Label
+      id: labelLocation
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 5
+      margin-left: 5
+      text: Location to Warn:
+
+    BotTextEdit
+      id: Location
+      anchors.top: prev.bottom
+      anchors.left: prev.left
+      anchors.right: prev.right
+      margin-right: 5
+      margin-top: 5
+      placeholder: Insert Text Location
+      text-align: left
+
+    Label
+      id: labelDiscord
+      anchors.top: prev.bottom
+      anchors.left: prev.left
+      anchors.right: prev.right
+      margin-top: 5
+      text: Link Webhook:
+
+    BotTextEdit
+      id: Webhook
+      anchors.top: prev.bottom
+      anchors.left: prev.left
+      anchors.right: prev.right
+      margin-top: 5
+      placeholder: Insert Link Discord Webhook
+      text-align: left
+      
+    HorizontalSeparator
+      id: sep1
+      anchors.top: prev.bottom
+      anchors.left: prev.left
+      anchors.right: prev.right
+      margin-top: 5
+
+    Button
+      id: filtroGuild
+      anchors.top: prev.bottom
+      margin-top: 5
+      anchors.left: prev.left
+      anchors.right: prev.right
+      text: List Guilds
+      height: 18
+
+    Button
+      id: filtroPlayers
+      anchors.top: prev.bottom
+      margin-top: 2
+      anchors.left: prev.left
+      anchors.right: prev.right
+      text: List Players
+      height: 18
+
+    BotSwitch
+      id: WarnGuild
+      anchors.top: prev.bottom
+      anchors.left: prev.left
+      margin-top: 5
+      width: 115
+      text: Warn Guild
+
+    BotSwitch
+      id: WarnPlayer
+      anchors.top: filtroPlayers.bottom
+      anchors.right: filtroPlayers.right
+      margin-top: 5
+      width: 115
+      text: Warn Players
+
+    HorizontalSeparator
+      id: sep2
+      anchors.top: prev.bottom
+      anchors.left: filtroPlayers.left
+      anchors.right: filtroPlayers.right
+      margin-top: 5
+
+    Label
+      id: LabelDelay
+      anchors.top: prev.bottom
+      margin-top: 5
+      anchors.left: prev.left
+      anchors.right: prev.right
+      text: Delay to Warn: 5s
+      text-align: center
+
+    HorizontalScrollBar
+      id: delayWarn
+      anchors.top: prev.bottom
+      margin-top: 5
+      anchors.left: prev.left
+      anchors.right: prev.right
+      step: 1
+      minimum: 1
+      maximum: 30
+
+    BotSwitch
+      id: ativarGuild
+      anchors.top: prev.bottom
+      anchors.right: prev.right
+      anchors.left: prev.left
+      margin-top: 5
+      text: Say Guild Chat
+
+    BotSwitch
+      id: ativarDiscord
+      anchors.top: prev.bottom
+      anchors.right: prev.right
+      anchors.left: prev.left
+      margin-top: 5
+      text: Active Discord Warn
+    
+  Button
+    id: closePanel
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    height: 20
+    margin-left: -5
+    margin-right: -5
+    margin-bottom: -2
+    text: Close
+]=], g_ui.getRootWidget())
+
+warnInterface:hide()
+
+if modules._G.g_app.isMobile() then
+  equipInterface:setSize("260 335")
+end
+
+local function updateDelay()
+  warnInterface.flatp.LabelDelay:setText("Delay to Warn: " .. tostring(warnCfg.delayWarn or 5) .. "s")
+end
+
+warnInterface.flatp.Location:setText(warnCfg.location)
+warnInterface.flatp.Webhook:setText(warnCfg.webhook)
+warnInterface.flatp.delayWarn:setValue(warnCfg.delayWarn)
+warnInterface.flatp.WarnGuild:setOn(warnCfg.warnGuild)
+warnInterface.flatp.WarnPlayer:setOn(warnCfg.warnPlayer)
+warnInterface.flatp.ativarGuild:setOn(warnCfg.sayGuild)
+warnInterface.flatp.ativarDiscord:setOn(warnCfg.discordWarn)
+warnButton.title:setOn(warnCfg.enabled)
+
+updateDelay()
+
+warnInterface.flatp.Location.onTextChange = function(_, text)
+  warnCfg.location = tostring(text or "")
+  saveWarn()
+end
+
+warnInterface.flatp.Webhook.onTextChange = function(_, text)
+  warnCfg.webhook = tostring(text or "")
+  saveWarn()
+end
+
+warnInterface.flatp.delayWarn.onValueChange = function(_, value)
+  warnCfg.delayWarn = tonumber(value) or 5
+  updateDelay()
+  saveWarn()
+end
+
+warnInterface.flatp.WarnGuild.onClick = function(widget)
+  warnCfg.warnGuild = not widget:isOn()
+  widget:setOn(warnCfg.warnGuild)
+  saveWarn()
+end
+
+warnInterface.flatp.WarnPlayer.onClick = function(widget)
+  warnCfg.warnPlayer = not widget:isOn()
+  widget:setOn(warnCfg.warnPlayer)
+  saveWarn()
+end
+
+warnInterface.flatp.ativarGuild.onClick = function(widget)
+  warnCfg.sayGuild = not widget:isOn()
+  widget:setOn(warnCfg.sayGuild)
+  saveWarn()
+end
+
+warnInterface.flatp.ativarDiscord.onClick = function(widget)
+  warnCfg.discordWarn = not widget:isOn()
+  widget:setOn(warnCfg.discordWarn)
+  saveWarn()
+end
+
+warnButton.title.onClick = function(widget)
+  warnCfg.enabled = not widget:isOn()
+  widget:setOn(warnCfg.enabled)
+  saveWarn()
+end
+
+warnButton.settings.onClick = function()
+  if warnInterface:isVisible() then
+    warnInterface:hide()
+  else
+    warnInterface:show()
+    warnInterface:raise()
+    warnInterface:focus()
+  end
+end
+
+warnInterface.closePanel.onClick = function()
+  warnInterface:hide()
+end
+
+g_ui.loadUIFromString([[
+LnsWarnListWindow < MainWindow
+  id: mainPanel
+  size: 420 300
+  text: Setup List
+  anchors.centerIn: parent
+  margin-top: -50
+
+  FlatPanel
+    id: flatp
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: ok.top
+    margin: -6
+    margin-top: 2
+    margin-bottom: 5
+
+    Label
+      id: titleLabel
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 7
+      margin-left: 8
+      margin-right: 8
+      text-align: center
+      color: #d7c08a
+      font: verdana-11px-rounded
+      text: Lista
+
+    Label
+      id: descLabel
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 5
+      margin-left: 8
+      margin-right: 8
+      text-align: center
+      text-wrap: true
+      height: 30
+      text: Insira os nomes separados por virgula ou um por linha.
+
+    TextEdit
+      id: listText
+      anchors.top: prev.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      margin-top: 8
+      margin-left: 8
+      margin-right: 8
+      margin-bottom: 8
+      color: white
+      text-wrap: true
+
+  Button
+    id: ok
+    anchors.left: parent.left
+    anchors.right: parent.horizontalCenter
+    anchors.bottom: parent.bottom
+    height: 20
+    margin-left: -5
+    margin-right: 2
+    margin-bottom: -2
+    text: OK
+
+  Button
+    id: cancel
+    anchors.left: parent.horizontalCenter
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    height: 20
+    margin-left: 2
+    margin-right: -5
+    margin-bottom: -2
+    text: Cancel
+]])
+
+local warnListWindow = nil
+
+local function cleanListText(text)
+  text = tostring(text or "")
+  text = text:gsub("\r", "")
+  text = text:gsub("\n", ",")
+  text = text:gsub(",+", ",")
+  text = text:gsub("^,", "")
+  text = text:gsub(",$", "")
+  return text
+end
+
+local function storageListToText(text)
+  return tostring(text or ""):gsub(",", "\n")
+end
+
+local function openWarnListWindow(title, desc, storageKey)
+  if warnListWindow then
+    warnListWindow:destroy()
+    warnListWindow = nil
+  end
+
+  warnListWindow = UI.createWindow("LnsWarnListWindow", g_ui.getRootWidget())
+  warnListWindow:setText(title)
+  warnListWindow.flatp.titleLabel:setText(title)
+  warnListWindow.flatp.descLabel:setText(desc)
+  warnListWindow.flatp.listText:setText(storageListToText(warnCfg[storageKey]))
+
+  warnListWindow:show()
+  warnListWindow:raise()
+  warnListWindow:focus()
+
+  warnListWindow.ok.onClick = function()
+    warnCfg[storageKey] = cleanListText(warnListWindow.flatp.listText:getText())
+    rebuildLists()
+    saveWarn()
+
+    warnListWindow:destroy()
+    warnListWindow = nil
+
+    if modules.game_textmessage then
+      modules.game_textmessage.displayBroadcastMessage(title .. " salva com sucesso!", "#00FF00")
+    end
+  end
+
+  warnListWindow.cancel.onClick = function()
+    warnListWindow:destroy()
+    warnListWindow = nil
+  end
+end
+
+warnInterface.flatp.filtroGuild.onClick = function()
+  openWarnListWindow(
+    "LIST GUILDS",
+    "Insira uma guild por linha ou separada por virgula.",
+    "guildList"
+  )
+end
+
+warnInterface.flatp.filtroPlayers.onClick = function()
+  openWarnListWindow(
+    "LIST PLAYERS",
+    "Insira um player por linha ou separado por virgula.",
+    "playerList"
+  )
+end
+
+local playerInfos = {}
+local lastWarnCheck = 0
+local lastLookCheck = 0
+local foundLook = 0
+
+local function getVoc(text)
+  text = tostring(text or ""):lower()
+
+  if text:find("sorcerer") then return "MS" end
+  if text:find("druid") then return "ED" end
+  if text:find("knight") then return "EK" end
+  if text:find("paladin") then return "RP" end
+  if text:find("monk") then return "EM" end
+
+  return ""
+end
+
+local function getWarnPlayersOnScreen()
+  local list = {}
+
+  for _, spec in ipairs(getSpectators() or {}) do
+    if spec and spec:isPlayer() and spec ~= player and spec:getPosition().z == posz() then
+      table.insert(list, spec)
+    end
+  end
+
+  return list
+end
+
+local function requestLookPlayers(force)
+  if not force and now - lastLookCheck < 3000 then return end
+  lastLookCheck = now
+
+  for _, spec in ipairs(getWarnPlayersOnScreen()) do
+    local name = spec:getName()
+    if name then
+      local info = playerInfos[name:lower()]
+      if force or not info or now - (info.updated or 0) > 10000 then
+        g_game.look(spec)
+        foundLook = now
+      end
+    end
+  end
+end
+
+local lookRegex = [[You see ([^\(]*) \(Level ([0-9]*)\)((?:.)* of the ([\w ]*),|)]]
+
+onTextMessage(function(mode, text)
+  if not warnCfg.enabled then return end
+
+  local re = regexMatch(text, lookRegex)
+  if #re == 0 then return end
+
+  local name = trimWarn(re[1][2])
+  local level = trimWarn(re[1][3])
+  local guild = trimWarn(re[1][5] or "")
+  local voc = getVoc(text)
+
+  if name == "" then return end
+
+  playerInfos[name:lower()] = {
+    name = name,
+    level = level,
+    guild = guild,
+    voc = voc,
+    updated = now
+  }
+
+  local creature = getCreatureByName(name)
+  if creature then
+    local showGuild = guild
+    if showGuild:len() > 10 then
+      showGuild = showGuild:sub(1, 10) .. "..."
+    end
+    creature:setText("\n" .. level .. voc .. "\n" .. showGuild)
+  end
+
+  if foundLook and now - foundLook < 500 and modules.game_textmessage then
+    modules.game_textmessage.clearMessages()
+  end
+end)
+
+onCreatureAppear(function(creature)
+  if not warnCfg.enabled then return end
+  if not creature or not creature:isPlayer() then return end
+  if creature == player then return end
+  if creature:getPosition().z ~= posz() then return end
+
+  schedule(200, function()
+    if creature and creature:isPlayer() and creature:getPosition().z == posz() then
+      local name = creature:getName()
+      if name and not playerInfos[name:lower()] then
+        g_game.look(creature)
+        foundLook = now
+      end
+    end
+  end)
+end)
+
+onPlayerPositionChange(function(newPos, oldPos)
+  if not warnCfg.enabled then return end
+  if not newPos or not oldPos then return end
+
+  if newPos.z ~= oldPos.z then
+    schedule(500, function()
+      requestLookPlayers(true)
+    end)
+  end
+end)
+
+local function isTarget(info)
+  if not info then return false end
+
+  local name = tostring(info.name or ""):lower()
+  local guild = tostring(info.guild or ""):lower()
+
+  if warnCfg.warnPlayer == true and cachedPlayerList[name] then return true end
+  if warnCfg.warnGuild == true and cachedGuildList[guild] then return true end
+
+  return false
+end
+
+local function sendDiscord(data)
+  if tostring(warnCfg.webhook or "") == "" then return end
+  if not HTTP or not HTTP.postJSON then return end
+
+  local payload = {
+    username = "LNS Custom",
+    embeds = {{
+      title = "[LNS] Player Detection",
+      color = 10038562,
+      fields = {
+        { name = "Local:", value = tostring(data.location or "-") },
+        { name = "Amount Players on Screen:", value = tostring(data.amountScreen or 0) },
+        { name = "Amount Players list:", value = tostring(data.amountList or 0) },
+        { name = "Name:", value = tostring(data.name or "-") },
+        { name = "Guild:", value = tostring(data.guild or "-") },
+        { name = "Level:", value = tostring(data.level or "-") },
+        { name = "Voc:", value = tostring(data.voc or "-") }
+      },
+      footer = {
+        text = "LNS Custom"
+      }
+    }}
+  }
+
+  HTTP.postJSON(warnCfg.webhook, payload, function(_, err)
+    if err then
+      print("Discord Webhook Error: " .. tostring(err))
+    end
+  end)
+end
+
+macro(1000, function()
+  if warnCfg.enabled ~= true then return end
+
+  local delaySec = tonumber(warnCfg.delayWarn) or 5
+  if now - lastWarnCheck < delaySec * 1000 then return end
+  lastWarnCheck = now
+
+  requestLookPlayers(false)
+
+  local players = getWarnPlayersOnScreen()
+  local amountScreen = #players
+  local matched = {}
+
+  for _, creature in ipairs(players) do
+    local name = creature:getName()
+    local info = name and playerInfos[name:lower()]
+
+    if info and isTarget(info) then
+      matched[name:lower()] = info
+    end
+  end
+
+  local amountList = 0
+  for _ in pairs(matched) do
+    amountList = amountList + 1
+  end
+
+  if amountList <= 0 then return end
+
+  for _, info in pairs(matched) do
+    if warnCfg.discordWarn == true then
+      sendDiscord({
+        location = warnCfg.location,
+        amountScreen = amountScreen,
+        amountList = amountList,
+        name = info.name,
+        guild = info.guild ~= "" and info.guild or "-",
+        level = info.level,
+        voc = info.voc ~= "" and info.voc or "-"
+      })
+    end
+
+    if warnCfg.sayGuild == true then
+      local ch = getChannelId and getChannelId("guild")
+      if ch then
+        sayChannel(ch, "[LNS] Player Detection: " .. info.name .. " | Guild: " .. (info.guild ~= "" and info.guild or "-") .. " | Level: " .. info.level .. " | Voc: " .. (info.voc ~= "" and info.voc or "-"))
+      end
+    end
+  end
+end)
+
+macro(30000, function()
+  local fresh = {}
+  for k, info in pairs(playerInfos) do
+    if info.updated and now - info.updated < 60000 then
+      fresh[k] = info
+    end
+  end
+  playerInfos = fresh
+end)
+
+UI.Separator()
+
+if not loadCharStorage or not saveCharStorage then
+  return print("[Dummy Train] LNS Storage Core nao carregado.")
+end
+
+charStorage = charStorage or loadCharStorage()
+
+local function saveDummyChar()
+  saveCharStorage(charStorage)
+end
+
+local panelName = "Dummy Train"
+
+charStorage[panelName] = charStorage[panelName] or {
+  id = 28557,
+  id2 = 28559,
+  enabled = false,
+  training = false,
+  lastStart = 0,
+  lastTry = 0,
+  lastUsePos = nil
+}
+
+local cfg = charStorage[panelName]
+
+cfg.training = false
+cfg.lastStart = 0
+cfg.lastTry = 0
+cfg.lastUsePos = nil
+
+local ui = setupUI([[
+Panel
+  height: 80
+
+  Label
+    id: itemLabel
+    anchors.top: parent.top
+    anchors.left: parent.left
+    margin-top: 5
+    margin-left: 2
+    text: Exercise
+    text-auto-resize: true
+    font: verdana-11px-rounded
+    color: lightGray
+
+  Label
+    id: targetLabel
+    anchors.top: parent.top
+    anchors.right: parent.right
+    margin-top: 5
+    margin-right: 12
+    text: Dummy
+    font: verdana-11px-rounded
+    color: lightGray
+
+  BotItem
+    id: item
+    anchors.top: itemLabel.bottom
+    anchors.left: itemLabel.left
+    margin-top: 3
+    margin-left: 9
+
+  BotItem
+    id: Target
+    anchors.top: targetLabel.bottom
+    anchors.right: targetLabel.right
+    margin-top: 3
+    margin-right: 6
+
+  BotSwitch
+    id: title
+    anchors.top: item.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 5
+    height: 18
+    text-align: center
+    !text: tr('Dummy Train')
+]], parent)
+
+ui:setId(panelName)
+
+ui.title:setOn(cfg.enabled)
+
+ui.title.onClick = function(widget)
+  cfg.enabled = not cfg.enabled
+  widget:setOn(cfg.enabled)
+
+  if not cfg.enabled then
+    cfg.training = false
+    cfg.lastStart = 0
+    cfg.lastTry = 0
+  end
+
+  saveDummyChar()
+end
+
+ui.item:setItemId(cfg.id)
+
+ui.item.onItemChange = function(widget)
+  cfg.id = widget:getItemId()
+  saveDummyChar()
+end
+
+ui.Target:setItemId(cfg.id2)
+
+ui.Target.onItemChange = function(widget)
+  cfg.id2 = widget:getItemId()
+  saveDummyChar()
+end
+
+function setDummyOff()
+  cfg.enabled = false
+  cfg.training = false
+  cfg.lastStart = 0
+  cfg.lastTry = 0
+
+  ui.title:setOn(false)
+
+  saveDummyChar()
+end
+
+function setDummyOn()
+  cfg.enabled = true
+
+  ui.title:setOn(true)
+
+  saveDummyChar()
+end
+
+local function safeLower(s)
+  return tostring(s or ""):lower()
+end
+
+local function isDummyTile(tile)
+  if not tile then return false end
+
+  local top = tile:getTopUseThing()
+  if not top then return false end
+
+  return top:getId() == cfg.id2
+end
+
+local function getClosestDummy()
+  local playerPos = pos()
+  if not playerPos then return nil end
+
+  local bestTile = nil
+  local bestDist = 999
+
+  for _, tile in ipairs(g_map.getTiles(posz())) do
+    if isDummyTile(tile) then
+      local tPos = tile:getPosition()
+
+      if tPos and tPos.z == playerPos.z then
+        local dist = getDistanceBetween(playerPos, tPos)
+
+        if dist <= 7 and dist < bestDist then
+          bestDist = dist
+          bestTile = tile
+        end
+      end
+    end
+  end
+
+  return bestTile
+end
+
+local function tryStartTraining()
+  local tile = getClosestDummy()
+  if not tile then return false end
+
+  local top = tile:getTopUseThing()
+  if not top then return false end
+
+  cfg.lastTry = now
+  cfg.lastUsePos = tile:getPosition()
+
+  useWith(cfg.id, top)
+
+  return true
+end
+
+onTextMessage(function(mode, text)
+  if not cfg.enabled then return end
+
+  local msg = safeLower(text)
+
+  if msg:find("you started your training", 1, true) then
+    cfg.training = true
+    cfg.lastStart = now
+    return
+  end
+
+  if msg:find("your training has stopped", 1, true)
+  or msg:find("your training has been canceled", 1, true)
+  or msg:find("training has ended", 1, true)
+  or msg:find("you are not training", 1, true)
+  or msg:find("there is no dummy", 1, true)
+  or msg:find("not possible", 1, true)
+  or msg:find("you are too far away", 1, true) then
+    cfg.training = false
+    cfg.lastStart = 0
+    cfg.lastTry = now
+    return
+  end
+end)
+
+macro(500, function()
+  if not cfg.enabled then return end
+
+  local tile = getClosestDummy()
+
+  if not tile then
+    cfg.training = false
+    return
+  end
+
+  -- se ja iniciou o treino, NAO USA MAIS O ITEM NO DUMMY
+  -- isso evita cancelar/reativar em loop
+  if cfg.training then
+    return
+  end
+
+  -- tenta iniciar somente quando realmente nao esta treinando
+  if now - (cfg.lastTry or 0) > 3000 then
+    tryStartTraining()
+  end
+end)
+
+
+-----------------------------------
+---------- HUD
+-----------------------------------
+if not loadCharStorage or not saveCharStorage then
+  return print("[HUD] LNS Storage Core nao carregado.")
+end
+
+charStorage = charStorage or loadCharStorage()
+
+local switchHud = "hudButton"
+local panelName = "hudInterface"
+
+charStorage[switchHud] = charStorage[switchHud] or {
+  enabled = false
+}
+
+charStorage[panelName] = charStorage[panelName] or {
+  switches = {},
+  targetInfoPos = nil
+}
+
+charStorage[panelName].switches = charStorage[panelName].switches or {}
+
+local function saveHudChar()
+  saveCharStorage(charStorage)
+end
+
+local hudCfg = charStorage[panelName]
+
+charStorage[switchHud].enabled = true
+
+--==================================================
+-- HUD INTERFACE
+--==================================================
+
+hudInterface = setupUI([[
+MainWindow
+  id: mainPanel
+  size: 260 230
+  border: 1 black
+  anchors.centerIn: parent
+  margin-top: -60
+  text: HUD Settings
+
+  TextList
+    id: panelMain
+    anchors.top: parent.top
+    anchors.right: parent.right
+    anchors.left: parent.left
+    anchors.bottom: parent.bottom
+    margin-bottom: 25
+    margin-top: 0
+    margin-right: 7
+    margin-left: -3
+    height: 235
+    vertical-scrollbar: spellListScrollBar
+    layout: verticalBox
+
+    BotSwitch
+      id: barLifeMana
+      margin-top: 10
+      margin-right: 5
+      width: 25
+      text: Life/Mana Bar Edited
+      font: verdana-11px-rounded
+      image-source: ""
+      $on:
+        color: green
+        opacity: 1.00
+      $!on:
+        color: white
+        opacity: 0.80
+
+    BotSwitch
+      id: targetInfo
+      margin-top: 10
+      margin-right: 5
+      width: 25
+      text: Target Info
+      font: verdana-11px-rounded
+      image-source: ""
+      $on:
+        color: green
+        opacity: 1.00
+      $!on:
+        color: white
+        opacity: 0.80
+
+    BotSwitch
+      id: taskTracker
+      margin-top: 10
+      margin-right: 5
+      width: 25
+      text: Task Ragnar
+      font: verdana-11px-rounded
+      image-source: ""
+      tooltip: Temporariamente Desativado
+      $on:
+        color: green
+        opacity: 1.00
+      $!on:
+        color: red
+        opacity: 0.80
+
+    BotSwitch
+      id: comboManager
+      margin-top: 10
+      margin-right: 5
+      width: 25
+      text: Manager Attackbot
+      font: verdana-11px-rounded
+      image-source: ""
+      $on:
+        color: green
+        opacity: 1.00
+      $!on:
+        color: white
+        opacity: 0.80
+
+    BotSwitch
+      id: autoBoss
+      margin-top: 10
+      margin-right: 5
+      width: 25
+      text: Auto Boss
+      font: verdana-11px-rounded
+      image-source: ""
+      $on:
+        color: green
+        opacity: 1.00
+      $!on:
+        color: white
+        opacity: 0.80
+      
+  VerticalScrollBar
+    id: spellListScrollBar
+    anchors.top: panelMain.top
+    anchors.bottom: panelMain.bottom
+    anchors.left: panelMain.right
+    pixels-scroll: true
+    image-color: #363636
+    margin-top: 0
+    margin-bottom: 0
+    step: 10
+
+  Button
+    id: closePanel
+    anchors.left: panelMain.left
+    anchors.right: spellListScrollBar.right
+    anchors.top: panelMain.bottom
+    margin-left: 0
+    margin-top: 5
+    text: Close
+    color: gray
+]], g_ui.getRootWidget())
+
+hudInterface:hide()
+
+local function getHudWidget(id)
+  if not hudInterface then return nil end
+  return hudInterface:recursiveGetChildById(id)
+end
+
+local function bindHudSwitch(id)
+  local widget = getHudWidget(id)
+  if not widget then
+    warn("[HUD] Widget nao encontrado: " .. tostring(id))
+    return
+  end
+
+  if hudCfg.switches[id] == nil then
+    hudCfg.switches[id] = false
+    saveHudChar()
+  end
+
+  widget:setOn(hudCfg.switches[id] == true)
+
+  widget.onClick = function(w)
+    local state = not w:isOn()
+    w:setOn(state)
+    hudCfg.switches[id] = state
+    saveHudChar()
+  end
+end
+
+bindHudSwitch("barLifeMana")
+bindHudSwitch("targetInfo")
+bindHudSwitch("taskTracker")
+bindHudSwitch("comboManager")
+bindHudSwitch("autoBoss")
+
+hudInterface.closePanel.onClick = function()
+  hudInterface:hide()
+end
+
+
+
+--==================================================
+-- HELPERS HUD
+--==================================================
+
+local function hudMasterOn()
+  return true
+end
+
+local function hudSwitchOn(id)
+  return charStorage[panelName]
+    and charStorage[panelName].switches
+    and charStorage[panelName].switches[id] == true
+end
+
+--==================================================
+-- LIFE / MANA BAR
+--==================================================
+
+local function hpColor(p)
+  return "red"
+end
+
+local function mpColor(p)
+  if p <= 35 then return "#000099" end
+  if p <= 75 then return "#3333CC" end
+  return "#4D4DFF"
+end
+
+local HP_UI = [[
+ProgressBar
+  id: barHp
+  anchors.centerIn: parent
+  margin-top: -255
+  margin-left: -20
+  height: 11
+  width: 320
+  border: 1 black
+  opacity: 0.60
+  text-align: center
+  background-color: red
+]]
+
+local MP_UI = [[
+ProgressBar
+  id: barMp
+  anchors.centerIn: parent
+  margin-top: -243
+  margin-left: -20
+  height: 11
+  width: 240
+  border: 1 black
+  opacity: 0.60
+  text-align: center
+  background-color: blue
+]]
+
+local bars = {
+  hp = nil,
+  mp = nil
+}
+
+local function ensureBars()
+  if bars.hp and not bars.hp:isDestroyed() and bars.mp and not bars.mp:isDestroyed() then
+    return
+  end
+
+  bars.hp = setupUI(HP_UI, g_ui.getRootWidget())
+  bars.mp = setupUI(MP_UI, g_ui.getRootWidget())
+
+  bars.hp:hide()
+  bars.mp:hide()
+end
+
+local function setBarsVisible(v)
+  ensureBars()
+
+  if v then
+    bars.hp:show()
+    bars.mp:show()
+  else
+    bars.hp:hide()
+    bars.mp:hide()
+  end
+end
+
+local function updateBars()
+  if not bars.hp or not bars.mp then return end
+
+  local hp = hppercent()
+  local mp = manapercent()
+
+  bars.hp:setPercent(hp)
+  bars.hp:setText(string.format("HP: %d%%", hp))
+  bars.hp:setBackgroundColor(hpColor(hp))
+
+  bars.mp:setPercent(mp)
+  bars.mp:setText(string.format("MP: %d%%", mp))
+  bars.mp:setBackgroundColor(mpColor(mp))
+end
+
+macro(100, function()
+  if not hudMasterOn() or not hudSwitchOn("barLifeMana") then
+    setBarsVisible(false)
+    return
+  end
+
+  setBarsVisible(true)
+  updateBars()
+end)
+
+--==================================================
+-- TARGET INFO
+--==================================================
+
+local targetLifeColors = {
+  { percent = 35, color = "red" },
+  { percent = 75, color = "yellow" },
+  { percent = 100, color = "green" }
+}
+
+local function getTargetColor(percent)
+  for i = 1, #targetLifeColors do
+    if percent <= targetLifeColors[i].percent then
+      return targetLifeColors[i].color
+    end
+  end
+  return "green"
+end
+
+local targetUI = setupUI([[
+UIWindow
+  id: targetInfoHUD
+  anchors.centerIn: parent
+  height: 62
+  width: 260
+  opacity: 1.00
+  padding: 4
+  background-color: alpha
+
+  UICreature
+    id: targetSprite
+    width: 70
+    height: 80
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: -18
+    margin-top: -4
+
+  Label
+    id: targetName
+    anchors.left: targetSprite.right
+    anchors.right: parent.right
+    anchors.top: parent.top
+    margin-left: 5
+    margin-top: 3
+    font: verdana-11px-rounded
+    color: white
+    text: TARGET
+
+  Label
+    id: targetDistance
+    anchors.left: targetName.left
+    anchors.right: targetName.right
+    anchors.top: targetName.bottom
+    margin-top: 2
+    font: verdana-11px-rounded
+    color: white
+    text: Distance:
+
+  ProgressBar
+    id: targetHpBar
+    anchors.left: targetName.left
+    anchors.right: parent.right
+    anchors.top: targetDistance.bottom
+    margin-top: 4
+    height: 13
+    border: 1 black
+    opacity: 0.85
+    text-align: center
+    background-color: red
+]], g_ui.getRootWidget())
+
+targetUI:hide()
+
+local function isMoveKeyPressed()
+  if g_app and type(g_app.isMobile) == "function" and g_app:isMobile() then
+    return true
+  end
+
+  return g_keyboard and g_keyboard.isCtrlPressed and g_keyboard.isCtrlPressed()
+end
+
+local function applyTargetPos()
+  local p = charStorage[panelName].targetInfoPos
+
+  targetUI:breakAnchors()
+
+  if not p or not p.x or not p.y or (p.x == 0 and p.y == 0) then
+    targetUI:addAnchor(AnchorHorizontalCenter, "parent", AnchorHorizontalCenter)
+    targetUI:addAnchor(AnchorVerticalCenter, "parent", AnchorVerticalCenter)
+    return
+  end
+
+  targetUI:setPosition({ x = p.x, y = p.y })
+end
+
+local function saveTargetPos()
+  local p = targetUI:getPosition()
+  if not p then return end
+
+  charStorage[panelName].targetInfoPos = {
+    x = p.x,
+    y = p.y
+  }
+
+  saveHudChar()
+end
+
+local function disableDrag()
+  targetUI.onDragEnter = nil
+  targetUI.onDragMove = nil
+  targetUI:setFocusable(false)
+  targetUI:setPhantom(true)
+  targetUI:setDraggable(false)
+  targetUI:setOpacity(1.00)
+end
+
+local function enableDrag()
+  targetUI:setFocusable(true)
+  targetUI:setPhantom(false)
+  targetUI:setDraggable(true)
+  targetUI:setOpacity(1.00)
+
+  targetUI.onDragEnter = function(widget, mousePos)
+    widget:breakAnchors()
+    widget.movingReference = {
+      x = mousePos.x - widget:getX(),
+      y = mousePos.y - widget:getY()
+    }
+    return true
+  end
+
+  targetUI.onDragMove = function(widget, mousePos)
+    local parent = widget:getParent()
+    if not parent or not parent.getRect then return true end
+
+    local r = parent:getRect()
+    local ref = widget.movingReference or { x = 0, y = 0 }
+
+    local x = mousePos.x - ref.x
+    local y = mousePos.y - ref.y
+
+    x = math.min(math.max(r.x, x), r.x + r.width - widget:getWidth())
+    y = math.min(math.max(r.y, y), r.y + r.height - widget:getHeight())
+
+    widget:move(x, y)
+
+    charStorage[panelName].targetInfoPos = {
+      x = x,
+      y = y
+    }
+
+    saveHudChar()
+    return true
+  end
+end
+
+local function sqmDistance(a, b)
+  if not a or not b then return 0 end
+
+  local dx = math.abs((a.x or 0) - (b.x or 0))
+  local dy = math.abs((a.y or 0) - (b.y or 0))
+
+  return math.max(dx, dy)
+end
+
+applyTargetPos()
+
+local lastPressed = nil
+local lastSavePos = 0
+
+if g_app and type(g_app.isMobile) == "function" and g_app:isMobile() then
+  enableDrag()
+  lastPressed = true
+else
+  disableDrag()
+end
+
+macro(100, function()
+  if not hudMasterOn() or not hudSwitchOn("targetInfo") then
+    if targetUI:isVisible() then targetUI:hide() end
+    return
+  end
+
+  if not g_game.isAttacking() then
+    if targetUI:isVisible() then targetUI:hide() end
+    return
+  end
+
+  if not targetUI:isVisible() then
+    targetUI:show()
+    applyTargetPos()
+  end
+
+  local pressed = isMoveKeyPressed()
+  if pressed ~= lastPressed then
+    if pressed then
+      enableDrag()
+    else
+      disableDrag()
+      saveTargetPos()
+    end
+    lastPressed = pressed
+  end
+
+  if pressed and now - lastSavePos > 500 then
+    saveTargetPos()
+    lastSavePos = now
+  end
+
+  local target = g_game.getAttackingCreature and g_game.getAttackingCreature() or nil
+  if not target then
+    targetUI:hide()
+    return
+  end
+
+  if target.getOutfit then
+    targetUI.targetSprite:setOutfit(target:getOutfit())
+  end
+
+  local name = target.getName and target:getName() or "-"
+  local hp = target.getHealthPercent and target:getHealthPercent() or 0
+
+  local myPos = pos and pos() or nil
+  local targetPos = target.getPosition and target:getPosition() or nil
+  local dist = sqmDistance(myPos, targetPos)
+
+  targetUI.targetName:setText(name)
+  targetUI.targetDistance:setText("Distance: " .. dist)
+
+  targetUI.targetHpBar:setPercent(hp)
+  targetUI.targetHpBar:setText(hp .. "%")
+  targetUI.targetHpBar:setBackgroundColor(getTargetColor(hp))
+end)
+
+--==================================================
+-- MANAGER ATTACKBOT - LISTA SPELL/RUNE + CD
+--==================================================
+
+charStorage[panelName].managerAttackbotPos = charStorage[panelName].managerAttackbotPos or { x = 0, y = 0 }
+charStorage[panelName].managerAttackbotMinimized = charStorage[panelName].managerAttackbotMinimized or false
+
+local managerAttackUI = setupUI([[
+MiniWindow
+  id: managerAttackbotHUD
+  size: 270 160
+  opacity: 1.00
+  text: Manager AttackBot
+  icon: /images/topbuttons/combatcontrols
+  icon-size: 18 18
+
+  TextList
+    id: list
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin-left: 7
+    margin-top: 22
+    margin-right: 15
+    margin-bottom: 5
+    vertical-scrollbar: scroll
+    layout: verticalBox
+
+  VerticalScrollBar
+    id: scroll
+    anchors.top: list.top
+    anchors.bottom: list.bottom
+    anchors.right: parent.right
+    width: 12
+    margin-right: 6
+    pixels-scroll: true
+    step: 24
+]], g_ui.getRootWidget())
+
+managerAttackUI:hide()
+local managerAttackRow = [[
+Panel
+  height: 25
+  margin-top: 1
+  background-color: alpha
+  focusable: true
+  $hover:
+    background-color: #242424
+
+  BotSwitch
+    id: enabled
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 2
+    size: 21 21
+    text: ""
+    $on:
+      image-color: green
+    $!on:
+      image-color: #202020
+
+  UIItem
+    id: icon
+    anchors.left: enabled.right
+    anchors.verticalCenter: enabled.verticalCenter
+    margin-left: 5
+    size: 20 20
+    visible: false
+
+  Label
+    id: name
+    anchors.left: icon.right
+    anchors.right: status.left
+    anchors.verticalCenter: enabled.verticalCenter
+    margin-left: 8
+    margin-right: 5
+    font: verdana-11px-rounded
+    color: white
+    text: -
+    phantom: false
+
+  Label
+    id: status
+    anchors.right: parent.right
+    anchors.verticalCenter: enabled.verticalCenter
+    margin-right: -2
+    width: 42
+    font: verdana-11px-rounded
+    text-align: center
+    color: green
+    text: ON
+]]
+
+local function managerAtkSave()
+  if type(saveAttackBotChar) == "function" then
+    saveAttackBotChar()
+  elseif type(saveCharStorage) == "function" then
+    saveCharStorage(charStorage)
+  end
+end
+
+
+local function managerAtkProfile()
+  charStorage.attackBotProfiles = charStorage.attackBotProfiles or {
+    activeProfile = 1,
+    profiles = {}
+  }
+
+  local idx = math.max(1, math.min(5, tonumber(charStorage.attackBotProfiles.activeProfile) or 1))
+
+  charStorage.attackBotProfiles.profiles[idx] =
+    charStorage.attackBotProfiles.profiles[idx] or {
+      main = {},
+      attacks = {}
+    }
+
+  local p = charStorage.attackBotProfiles.profiles[idx]
+  p.main = p.main or {}
+  p.attacks = p.attacks or {}
+
+  return p
+end
+
+local function managerAtkClear()
+  local children = managerAttackUI.list:getChildren()
+  for i = #children, 1, -1 do
+    children[i]:destroy()
+  end
+end
+
+local function setRowItem(widget, itemId)
+  itemId = tonumber(itemId) or 0
+  if not widget then return end
+
+  if itemId <= 0 then
+    widget:setVisible(false)
+    return
+  end
+
+  widget:setVisible(true)
+
+  if widget.setItemId then
+    widget:setItemId(itemId)
+  elseif widget.setItem and Item and Item.create then
+    widget:setItem(Item.create(itemId, 1))
+  end
+end
+
+local function managerAtkName(data)
+  if not data then return "-" end
+
+  if data.type == "spell" then
+    return tostring(data.spell or "-")
+  end
+
+  if data.type == "rune" then
+    return "Rune: [" .. tostring(data.id or 0) .. "]"
+  end
+
+  return "-"
+end
+
+local function managerAtkCooldownText(data)
+  local cd = tonumber(data.nextCast) or 0
+  if cd > now then
+    local left = math.ceil((cd - now) / 1000)
+    return tostring(left) .. "s"
+  end
+
+  return nil
+end
+
+local function managerAtkUpdateRow(row, data)
+  local enabled = data and data.enabled == true
+  local cdText = managerAtkCooldownText(data)
+
+  row.enabled:setOn(enabled)
+
+  if cdText then
+    row.status:setText(cdText)
+    row.status:setColor("yellow")
+  elseif enabled then
+    row.status:setText("ON")
+    row.status:setColor("green")
+  else
+    row.status:setText("OFF")
+    row.status:setColor("red")
+  end
+end
+
+
+local function managerAtkToggle(index, row)
+  local p = managerAtkProfile()
+  local atk = p.attacks and p.attacks[index]
+  if not atk then return end
+
+  atk.enabled = not (atk.enabled == true)
+
+  managerAtkUpdateRow(row, atk)
+  managerAtkSave()
+
+  if type(rebuildAttackList) == "function" then
+    rebuildAttackList()
+  end
+end
+
+local managerRows = {}
+
+local function managerAtkRefresh()
+  managerAtkClear()
+  managerRows = {}
+
+  local profile = managerAtkProfile()
+
+  for index, attack in ipairs(profile.attacks or {}) do
+    local row = setupUI(managerAttackRow, managerAttackUI.list)
+
+    row.name:setText(managerAtkName(attack))
+
+    if attack.type == "rune" then
+      setRowItem(row.icon, attack.id)
+      row.name:setMarginLeft(5)
+    else
+      setRowItem(row.icon, 0)
+      row.icon:setVisible(false)
+      row.name:setMarginLeft(-15)
+    end
+
+    managerAtkUpdateRow(row, attack)
+
+    local tip =
+      "Distance: " .. tostring(attack.distance or 1) ..
+      "\nMobs: " .. tostring(attack.mobs or 1) ..
+      "\nSafe: " .. ((attack.safe and "Yes") or "No")
+
+    row:setTooltip(tip)
+    row.enabled:setTooltip(tip)
+    row.icon:setTooltip(tip)
+    row.name:setTooltip(tip)
+    row.status:setTooltip(tip)
+
+    local function clickLine()
+      managerAtkToggle(index, row)
+    end
+
+    row.onClick = clickLine
+    row.enabled.onClick = clickLine
+    row.icon.onClick = clickLine
+    row.name.onClick = clickLine
+    row.status.onClick = clickLine
+
+    table.insert(managerRows, {
+      row = row,
+      index = index
+    })
+  end
+  lastManagerAttackCount = #(profile.attacks or {})
+end
+
+local function managerAtkUpdateCooldowns()
+  local p = managerAtkProfile()
+
+  for _, data in ipairs(managerRows) do
+    local atk = p.attacks and p.attacks[data.index]
+    if data.row and atk then
+      managerAtkUpdateRow(data.row, atk)
+    end
+  end
+end
+
+local function managerAtkApplyPos()
+  local p = charStorage[panelName].managerAttackbotPos
+
+  managerAttackUI:breakAnchors()
+
+  if not p or not p.x or not p.y or (p.x == 0 and p.y == 0) then
+    managerAttackUI:addAnchor(AnchorHorizontalCenter, "parent", AnchorHorizontalCenter)
+    managerAttackUI:addAnchor(AnchorVerticalCenter, "parent", AnchorVerticalCenter)
+    managerAttackUI:setMarginTop(80)
+    return
+  end
+
+  managerAttackUI:setPosition({ x = p.x, y = p.y })
+end
+
+local function managerAtkSavePos()
+  local p = managerAttackUI:getPosition()
+  if not p then return end
+
+  charStorage[panelName].managerAttackbotPos = {
+    x = p.x,
+    y = p.y
+  }
+
+  saveHudChar()
+end
+
+managerAttackUI.onDragEnter = function(widget, mousePos)
+  widget:breakAnchors()
+  widget.movingReference = {
+    x = mousePos.x - widget:getX(),
+    y = mousePos.y - widget:getY()
+  }
+
+  return true
+end
+
+managerAttackUI.onDragMove = function(widget, mousePos)
+  local parent = widget:getParent()
+  if not parent or not parent.getRect then return true end
+
+  local r = parent:getRect()
+  local ref = widget.movingReference or { x = 0, y = 0 }
+
+  local x = mousePos.x - ref.x
+  local y = mousePos.y - ref.y
+
+  x = math.min(math.max(r.x, x), r.x + r.width - widget:getWidth())
+  y = math.min(math.max(r.y, y), r.y + r.height - widget:getHeight())
+
+  widget:move(x, y)
+  return true
+end
+
+managerAttackUI.onDragLeave = function()
+  managerAtkSavePos()
+  return true
+end
+
+managerAtkApplyPos()
+managerAtkRefresh()
+
+local managerNormalHeight = 160
+local managerMinimizedHeight = 25
+
+local function managerAtkSetMinimized(state)
+  state = state == true
+
+  charStorage[panelName].managerAttackbotMinimized = state
+
+  if state then
+    managerNormalHeight = managerAttackUI:getHeight() > managerMinimizedHeight and managerAttackUI:getHeight() or managerNormalHeight
+
+    if managerAttackUI.list then managerAttackUI.list:hide() end
+    if managerAttackUI.scroll then managerAttackUI.scroll:hide() end
+    if managerAttackUI.title then managerAttackUI.title:hide() end
+
+    managerAttackUI:setHeight(managerMinimizedHeight)
+  else
+    managerAttackUI:setHeight(managerNormalHeight)
+
+    if managerAttackUI.list then managerAttackUI.list:show() end
+    if managerAttackUI.scroll then managerAttackUI.scroll:show() end
+    if managerAttackUI.title then managerAttackUI.title:hide() end
+
+    managerAtkRefresh()
+  end
+
+  managerAtkSave()
+end
+
+schedule(100, function()
+  managerAtkSetMinimized(charStorage[panelName].managerAttackbotMinimized == true)
+end)
+
+local miniScroll = managerAttackUI:getChildById("miniwindowScrollBar")
+if miniScroll then miniScroll:hide() end
+
+if managerAttackUI.closeButton then
+  managerAttackUI.closeButton:hide()
+end
+
+if managerAttackUI.lockButton then
+  managerAttackUI.lockButton:hide()
+end
+
+if managerAttackUI.minimizeButton then
+  managerAttackUI.minimizeButton:setMarginRight(-13)
+  managerAttackUI.minimizeButton.onClick = function()
+    managerAtkSetMinimized(not (charStorage[panelName].managerAttackbotMinimized == true))
+  end
+end
+
+macro(300, function()
+  if not hudSwitchOn("comboManager") then
+    if managerAttackUI:isVisible() then
+      managerAttackUI:hide()
+    end
+    return
+  end
+
+  if not managerAttackUI:isVisible() then
+    managerAttackUI:show()
+    managerAtkApplyPos()
+    managerAtkSetMinimized(charStorage[panelName].managerAttackbotMinimized == true)
+
+    if not charStorage[panelName].managerAttackbotMinimized then
+      managerAtkRefresh()
+    end
+  end
+
+  if not charStorage[panelName].managerAttackbotMinimized then
+    managerAtkUpdateCooldowns()
+  end
+end)
+
+local lastManagerAttackCount = 0
+
+macro(1000, function()
+  if not managerAttackUI:isVisible() then return end
+  if charStorage[panelName].managerAttackbotMinimized then return end
+
+  local p = managerAtkProfile()
+  local count = #(p.attacks or {})
+
+  if count ~= lastManagerAttackCount then
+    lastManagerAttackCount = count
+    managerAtkRefresh()
+  else
+    managerAtkUpdateCooldowns()
+  end
+end)
+
+macro(300, function()
+  if type(LNS_SET_BOSS_WINDOW_VISIBLE) ~= "function" then return end
+
+  LNS_SET_BOSS_WINDOW_VISIBLE(hudSwitchOn("autoBoss") == true)
+end)
+end
+
+do
   setDefaultTab("War")
 
 UI.Separator():setMarginTop(0)
