@@ -96,6 +96,20 @@ end
 
 
 rootWidget = g_ui.getRootWidget()
+local ListWindow = nil
+
+function openPlayerListWindow()
+  if not ListWindow or ListWindow:isDestroyed() then
+    warn("[PlayerList] Janela ainda nao foi carregada.")
+    return false
+  end
+
+  ListWindow:show()
+  ListWindow:raise()
+  ListWindow:focus()
+  return true
+end
+
 if rootWidget then
     ListWindow = UI.createWindow('PlayerListWindow', rootWidget)
     ListWindow:hide()
