@@ -1,6 +1,3 @@
-setDefaultTab("LNS")
-
--- securing storage namespace
 local panelName = "extras"
 
 charStorage = charStorage or loadCharStorage()
