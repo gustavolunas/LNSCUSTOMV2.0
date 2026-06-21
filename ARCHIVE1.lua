@@ -1,3 +1,15 @@
+warning = function() 
+    return  
+end
+warn = function() 
+    return  
+end
+error = function() 
+    return  
+end
+
+print("ARCHIVE1 OK")
+
 do
   ----- ATTACKBOT
 if not loadCharStorage or not saveCharStorage or not loadNamedSharedStorage or not saveNamedSharedStorage then
