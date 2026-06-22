@@ -4634,8 +4634,10 @@ local MW_CAST_COOLDOWN = 200
 local MW_KEY_COOLDOWN = 200
 local MW_FAIL_COOLDOWN = 100
 local HOLD_RECAST_DELAY = 300
-local HOLD_GLOBAL_CD = 250
+local HOLD_ALL_CD = 250
 local TRAP_CD = 250
+local OWN_WALL_CAST_WINDOW = 3000
+local CURSOR_REOPEN_DELAY = 50
 
 local mwLastCast = 0
 local mwLastKey = { front = 0, back = 0 }
@@ -4645,6 +4647,11 @@ local holdPressAt = 0
 local holdCandidates = {}
 local holdReadyAt = {}
 local holdLastCast = 0
+
+local ownWallCasts = {}
+local cursorCast = nil
+local cursorActiveKind = nil
+local cancelCursorCast
 
 local trapCheckPos = nil
 local trapMwPos = nil
@@ -4661,6 +4668,77 @@ local function samePos(a, b)
   return a and b and a.x == b.x and a.y == b.y and a.z == b.z
 end
 
+local function wallTextFromRuneId(id)
+  id = tonumber(id)
+
+  if id == tonumber(mwCfg.mwRune) then
+    return "MW Here"
+  end
+
+  if id == tonumber(mwCfg.wgRune) then
+    return "WG Here"
+  end
+
+  return nil
+end
+
+local function wallTextFromWallId(id)
+  id = tonumber(id)
+
+  if id == tonumber(mwCfg.mwWall1) or id == tonumber(mwCfg.mwWall2) or id == 16518 or id == 2128 then
+    return "MW Here"
+  end
+
+  if id == tonumber(mwCfg.wgWall1) or id == tonumber(mwCfg.wgWall2) then
+    return "WG Here"
+  end
+
+  return nil
+end
+
+local function cleanOwnWallCasts()
+  for k, data in pairs(ownWallCasts) do
+    if not data or (data.expires or 0) < now then
+      ownWallCasts[k] = nil
+    end
+  end
+end
+
+local function registerOwnWallCast(pos, runeId)
+  if not pos then return end
+
+  local text = wallTextFromRuneId(runeId)
+  if not text then return end
+
+  cleanOwnWallCasts()
+
+  ownWallCasts[keyPos(pos)] = {
+    text = text,
+    expires = now + OWN_WALL_CAST_WINDOW
+  }
+end
+
+local function takeOwnWallCast(pos, wallId)
+  if not pos then return nil end
+
+  local k = keyPos(pos)
+  local data = ownWallCasts[k]
+  if not data then return nil end
+
+  if (data.expires or 0) < now then
+    ownWallCasts[k] = nil
+    return nil
+  end
+
+  local wallText = wallTextFromWallId(wallId)
+  if not wallText or wallText ~= data.text then
+    return nil
+  end
+
+  ownWallCasts[k] = nil
+  return wallText
+end
+
 local function isSystemOn()
   return mwCfg and mwCfg.enabled == true
 end
@@ -4669,7 +4747,7 @@ local function isWallId(id)
   id = tonumber(id)
   return id == tonumber(mwCfg.mwWall1) or id == tonumber(mwCfg.mwWall2) or
          id == tonumber(mwCfg.wgWall1) or id == tonumber(mwCfg.wgWall2) or
-         id == 16518
+         id == 16518 or id == 2128
 end
 
 local function hasWall(tile)
@@ -4686,6 +4764,8 @@ local function inRange(pos)
   local ppos = player:getPosition()
   return ppos and pos and ppos.z == pos.z and math.abs(ppos.x - pos.x) < 8 and math.abs(ppos.y - pos.y) < 6
 end
+
+local tryUseRuneOnThing
 
 local function canUseOnTile(pos)
   if not pos or pos.z ~= posz() then return nil end
@@ -4715,7 +4795,10 @@ local function useMwAt(pos)
 
   mwLastCast = now
 
-  if useWith(tonumber(mwCfg.mwRune) or 3180, top) then
+  local runeId = tonumber(mwCfg.mwRune) or 3180
+
+  if tryUseRuneOnThing(runeId, top) then
+    registerOwnWallCast(tile:getPosition(), runeId)
     mwTileCooldown[k] = now + MW_CAST_COOLDOWN
     return true
   end
@@ -4785,7 +4868,7 @@ local function executeMwFrontBack(front)
   return castMwFrontBack(front) == true
 end
 
--- API para outros scripts/ícones chamarem sem usar _G
+-- API para outros scripts/ícones chamarem
 LNS_MWSystem = LNS_MWSystem or {}
 LNS_MWSystem.mwFront = function()
   return executeMwFrontBack(true)
@@ -4890,6 +4973,9 @@ local function setHoldMwWgIcon(state)
     mwCfg.holdMw = false
     mwCfg.holdWg = false
     clearHoldMarks()
+    if type(cancelCursorCast) == "function" then
+      cancelCursorCast()
+    end
   end
 
   refreshMwHoldButtons()
@@ -4902,18 +4988,402 @@ local function isHoldMwWgIconOn()
 end
 
 local function wallTextById(id)
-  id = tonumber(id)
+  return wallTextFromWallId(id)
+end
 
-  if id == tonumber(mwCfg.mwWall1) or id == tonumber(mwCfg.mwWall2) or id == 16518 then
-    return "MW Here"
+local function mwLater(ms, fn)
+  if type(schedule) == "function" then return schedule(ms, fn) end
+  if type(scheduleEvent) == "function" then return scheduleEvent(fn, ms) end
+  if g_dispatcher and type(g_dispatcher.scheduleEvent) == "function" then return g_dispatcher:scheduleEvent(fn, ms) end
+  return fn()
+end
+
+local function showMwMessage(text)
+  if modules and modules.game_textmessage and type(modules.game_textmessage.displayGameMessage) == "function" then
+    modules.game_textmessage.displayGameMessage(text)
+  elseif type(warn) == "function" then
+    warn(text)
+  end
+end
+
+tryUseRuneOnThing = function(runeId, thing)
+  runeId = tonumber(runeId)
+  if not runeId or not thing then return false end
+
+  -- Caminho principal: usa o useWith padrao do vBot/OTC pelo ID da runa.
+  -- Esse e o jeito mais compativel para BP aberta/fechada em clients que ja resolvem itemId internamente.
+  if type(useWith) == "function" then
+    local ok, ret = pcall(function()
+      return useWith(runeId, thing)
+    end)
+
+    -- Alguns OTCs retornam nil/false mesmo enviando a acao para o servidor.
+    -- Entao aqui so tratamos erro real de pcall como falha.
+    if ok then return true end
   end
 
-  if id == tonumber(mwCfg.wgWall1) or id == tonumber(mwCfg.wgWall2) then
-    return "WG Here"
+  -- Fallback por ID do client, quando existir.
+  if g_game and type(g_game.useInventoryItemWith) == "function" then
+    local ok = pcall(function()
+      g_game.useInventoryItemWith(runeId, thing)
+    end)
+    if ok then return true end
+  end
+
+  return false
+end
+
+local scriptCursorVisualOn = false
+
+local function setScriptCursorVisual(state)
+  state = state == true
+
+  if state and scriptCursorVisualOn then return end
+  if not state and not scriptCursorVisualOn then return end
+
+  if state then
+    scriptCursorVisualOn = true
+
+    -- Apenas visual. Nao usa Item.create/startUseWith falso, porque isso pode debuggar o client.
+    if g_mouse and type(g_mouse.pushCursor) == "function" then
+      pcall(function() g_mouse.pushCursor("target") end)
+      return
+    end
+
+    if g_window and type(g_window.setMouseCursor) == "function" then
+      pcall(function() g_window.setMouseCursor("/cursors/crosshair") end)
+      return
+    end
+
+    return
+  end
+
+  scriptCursorVisualOn = false
+
+  if g_mouse and type(g_mouse.popCursor) == "function" then
+    pcall(function() g_mouse.popCursor() end)
+    return
+  end
+
+  if g_window and type(g_window.restoreMouseCursor) == "function" then
+    pcall(function() g_window.restoreMouseCursor() end)
+    return
+  end
+end
+
+local handleCursorMapTile = nil
+local lastCursorMapClick = { at = 0, key = "" }
+local cursorMouseDown = false
+local cursorMouseDownAt = 0
+local cursorMouseDownPos = nil
+
+local function isLeftCursorButton(button)
+  if button == nil then return false end
+
+  if MouseLeftButton ~= nil and button == MouseLeftButton then
+    return true
+  end
+
+  if button == 1 or button == 0 then
+    return true
+  end
+
+  local s = tostring(button):lower()
+  return s == "left" or s == "mouseleftbutton" or s == "mouseleft" or s == "1" or s == "0"
+end
+
+local function cursorMouseMovedTooMuch(a, b)
+  if not a or not b then return false end
+  local dx = math.abs((a.x or 0) - (b.x or 0))
+  local dy = math.abs((a.y or 0) - (b.y or 0))
+  return dx > 14 or dy > 14
+end
+
+local function callOldMapMouse(widget, mousePos, button, oldFn)
+  if type(oldFn) == "function" then
+    local ok, ret = pcall(oldFn, widget, mousePos, button)
+    if ok then return ret end
+  end
+  return false
+end
+
+local function restoreOldCursorMapHook()
+  cursorMouseDown = false
+  cursorMouseDownAt = 0
+  cursorMouseDownPos = nil
+
+  local panel = modules.game_interface and modules.game_interface.gameMapPanel
+  if not panel then return end
+
+  if panel.lnsMwCursorOldMousePress then
+    panel.onMousePress = panel.lnsMwCursorOldMousePress
+    panel.lnsMwCursorOldMousePress = nil
+  end
+
+  if panel.lnsMwCursorOldMouseRelease then
+    panel.onMouseRelease = panel.lnsMwCursorOldMouseRelease
+    panel.lnsMwCursorOldMouseRelease = nil
+  end
+
+  panel.lnsMwCursorHooked = nil
+end
+
+local function installCursorMapHook()
+  local panel = modules.game_interface and modules.game_interface.gameMapPanel
+  if not panel then return false end
+  if panel.lnsMwCursorHooked then return true end
+
+  panel.lnsMwCursorOldMousePress = panel.onMousePress
+  panel.lnsMwCursorOldMouseRelease = panel.onMouseRelease
+  panel.lnsMwCursorHooked = true
+
+  panel.onMousePress = function(widget, mousePos, button)
+    if cursorCast and cursorActiveKind and isLeftCursorButton(button) then
+      cursorMouseDown = true
+      cursorMouseDownAt = now
+      cursorMouseDownPos = mousePos and { x = mousePos.x, y = mousePos.y } or nil
+      return true
+    end
+
+    return callOldMapMouse(widget, mousePos, button, widget.lnsMwCursorOldMousePress)
+  end
+
+  panel.onMouseRelease = function(widget, mousePos, button)
+    if cursorCast and cursorActiveKind and isLeftCursorButton(button) then
+      local validClick = cursorMouseDown == true
+        and now - (cursorMouseDownAt or 0) <= 1500
+        and not cursorMouseMovedTooMuch(cursorMouseDownPos, mousePos)
+
+      cursorMouseDown = false
+      cursorMouseDownAt = 0
+      cursorMouseDownPos = nil
+
+      if validClick and handleCursorMapTile and handleCursorMapTile(mousePos, button) then
+        return true
+      end
+
+      return true
+    end
+
+    return callOldMapMouse(widget, mousePos, button, widget.lnsMwCursorOldMouseRelease)
+  end
+
+  return true
+end
+
+restoreOldCursorMapHook()
+
+local function stopNativeCrosshair()
+  restoreOldCursorMapHook()
+  setScriptCursorVisual(false)
+
+  if modules and modules.game_interface and type(modules.game_interface.stopUseWith) == "function" then
+    pcall(function() modules.game_interface.stopUseWith() end)
+    return
+  end
+
+  if g_game and type(g_game.cancelUse) == "function" then
+    pcall(function() g_game.cancelUse() end)
+  end
+end
+
+cancelCursorCast = function()
+  cursorCast = nil
+  cursorActiveKind = nil
+  stopNativeCrosshair()
+end
+
+local function startNativeCrosshair(runeId)
+  runeId = tonumber(runeId)
+  if not runeId then return false end
+
+  local openedNative = false
+
+  -- Se a runa estiver visivel, abre o cursor nativo real e NAO instala hook no mapa.
+  -- Isso evita marcar tile por movimento/hover e deixa o client cuidar do clique normal.
+  if type(findItem) == "function" and modules and modules.game_interface and type(modules.game_interface.startUseWith) == "function" then
+    local item = nil
+    local okFind, found = pcall(function() return findItem(runeId) end)
+    if okFind then item = found end
+
+    if item then
+      local okStart = pcall(function() modules.game_interface.startUseWith(item) end)
+      openedNative = okStart == true
+    end
+  end
+
+  if openedNative then
+    restoreOldCursorMapHook()
+    setScriptCursorVisual(false)
+    return true
+  end
+
+  -- Se a runa nao estiver visivel, ai sim entra o cursor seguro da script.
+  -- Ele so executa no CLIQUE esquerdo real, tratado no onMouseRelease.
+  if installCursorMapHook() then
+    setScriptCursorVisual(true)
+    return true
+  end
+
+  return false
+end
+
+local function getCursorRuneId(kind)
+  if kind == "mw" then
+    return tonumber(mwCfg.mwRune) or 3180
+  end
+
+  if kind == "wg" then
+    return tonumber(mwCfg.wgRune) or 3156
   end
 
   return nil
 end
+
+local function isCursorKindActive(kind)
+  return cursorActiveKind == kind
+end
+
+local function reopenActiveCursor(kind)
+  kind = kind or cursorActiveKind
+  if not kind or cursorActiveKind ~= kind then return end
+  if mwCfg.iconHoldMwWg ~= true then return end
+
+  local runeId = getCursorRuneId(kind)
+  if not runeId then return end
+
+  cursorCast = {
+    kind = kind,
+    runeId = runeId
+  }
+
+  startNativeCrosshair(runeId)
+end
+
+local function activateCursorCast(kind)
+  if not isSystemOn() then
+    mwCfg.enabled = true
+    refreshMwHoldButtons()
+    saveMwStorage()
+  end
+
+  if mwCfg.iconHoldMwWg ~= true then
+    showMwMessage("Ligue o icone Hold MW/WG antes de usar o cursor.")
+    return false
+  end
+
+  local runeId = getCursorRuneId(kind)
+  if not runeId then return false end
+
+  -- clique no mesmo cursor = desliga. Clique no outro = troca MW <-> WG.
+  if cursorActiveKind == kind then
+    cancelCursorCast()
+    return false
+  end
+
+  cursorActiveKind = kind
+  cursorCast = {
+    kind = kind,
+    runeId = runeId
+  }
+
+  if not startNativeCrosshair(runeId) then
+    cancelCursorCast()
+    return false
+  end
+
+  return true
+end
+
+local function getUseWithTargetPos(pos, target)
+  if target and target.getPosition then
+    local ok, tpos = pcall(function() return target:getPosition() end)
+    if ok and tpos then
+      return { x = tpos.x, y = tpos.y, z = tpos.z }
+    end
+  end
+
+  if type(pos) == "table" and pos.x and pos.y and pos.z then
+    return { x = pos.x, y = pos.y, z = pos.z }
+  end
+
+  return nil
+end
+
+local function markCursorHoldTile(pos, runeId)
+  if not pos then return end
+
+  local text = wallTextFromRuneId(runeId)
+  if not text then return end
+
+  registerOwnWallCast(pos, runeId)
+
+  local tile = g_map.getTile(pos)
+  if tile then
+    tile:setText(text)
+  end
+
+  addHoldCandidate(pos)
+  holdReadyAt[keyPos(pos)] = now + 1200
+end
+
+handleCursorMapTile = function(mousePos, button)
+  if not cursorCast or not cursorActiveKind then return false end
+  if not isLeftCursorButton(button) then return false end
+  if mwCfg.iconHoldMwWg ~= true then return false end
+
+  local tile = getTileUnderCursor()
+  if not tile then return true end
+
+  local pos = tile:getPosition()
+  if not pos then return true end
+
+  local clickKey = keyPos(pos)
+  if lastCursorMapClick.key == clickKey and now - (lastCursorMapClick.at or 0) < 120 then
+    return true
+  end
+
+  lastCursorMapClick.key = clickKey
+  lastCursorMapClick.at = now
+
+  local runeId = tonumber(cursorCast.runeId)
+  if not runeId then return true end
+
+  local _, top = canUseOnTile(pos)
+  if not top then return true end
+
+  markCursorHoldTile(pos, runeId)
+  tryUseRuneOnThing(runeId, top)
+
+  -- Como o cursor fica ligado, reforca o crosshair visual apos cada clique.
+  local activeKind = cursorActiveKind
+  mwLater(CURSOR_REOPEN_DELAY, function()
+    reopenActiveCursor(activeKind)
+  end)
+
+  return true
+end
+
+onUseWith(function(pos, itemId, target, subType)
+  if not cursorCast or not cursorActiveKind then return end
+
+  itemId = tonumber(itemId)
+  if not itemId or itemId ~= tonumber(cursorCast.runeId) then return end
+
+  local activeKind = cursorActiveKind
+  local tpos = getUseWithTargetPos(pos, target)
+  if tpos then
+    markCursorHoldTile(tpos, itemId)
+  end
+
+  -- Se o client disparar onUseWith pelo cursor nativo, ele ja tentou o uso normal.
+  -- Nao fazemos outro use aqui para evitar double-use/debug. O hook proprio do mapa ja resolve o modo sem runa visivel.
+
+  -- Mantem o cursor ligado: depois de cada clique no mapa, abre o cursor de novo.
+  mwLater(CURSOR_REOPEN_DELAY, function()
+    reopenActiveCursor(activeKind)
+  end)
+end)
 
 LNS_MWSystem.isHoldMwWg = function()
   return isHoldMwWgIconOn()
@@ -4927,11 +5397,39 @@ LNS_MWSystem.toggleHoldMwWg = function()
   return setHoldMwWgIcon(not isHoldMwWgIconOn())
 end
 
+LNS_MWSystem.cursorMw = function()
+  return activateCursorCast("mw")
+end
+
+LNS_MWSystem.cursorWg = function()
+  return activateCursorCast("wg")
+end
+
+LNS_MWSystem.stopCursor = function()
+  cancelCursorCast()
+  return true
+end
+
+LNS_MWSystem.isCursorMw = function()
+  return isCursorKindActive("mw")
+end
+
+LNS_MWSystem.isCursorWg = function()
+  return isCursorKindActive("wg")
+end
+
+LNS_MWSystem.isCursorActive = function()
+  return cursorActiveKind ~= nil
+end
+
+LNS_MWSystem.startCursorMw = LNS_MWSystem.cursorMw
+LNS_MWSystem.startCursorWg = LNS_MWSystem.cursorWg
+
 
 local holdMacro = macro(20, function()
   if not holdEnabled() then return end
   if #holdCandidates == 0 then return end
-  if now - holdLastCast < HOLD_GLOBAL_CD then return end
+  if now - holdLastCast < HOLD_ALL_CD then return end
 
   for i = #holdCandidates, 1, -1 do
     local pos = holdCandidates[i]
@@ -4959,8 +5457,9 @@ local holdMacro = macro(20, function()
     if not top then goto continue end
 
     holdLastCast = now
-    if useWith(rune, top) then
-      holdReadyAt[k] = now + HOLD_GLOBAL_CD
+    if tryUseRuneOnThing(rune, top) then
+      registerOwnWallCast(pos, rune)
+      holdReadyAt[k] = now + HOLD_ALL_CD
       return
     end
 
@@ -5134,7 +5633,10 @@ macro(50, function()
       local top = tile:getTopUseThing()
       if not top then return end
 
-      if useWith(tonumber(mwCfg.mwRune) or 3180, top) then
+      local runeId = tonumber(mwCfg.mwRune) or 3180
+
+      if tryUseRuneOnThing(runeId, top) then
+        registerOwnWallCast(trapMwPos, runeId)
         lastTrapCast = now
         return
       end
@@ -5152,7 +5654,7 @@ end)
 local function getWallDuration(id)
   id = tonumber(id)
 
-  if id == tonumber(mwCfg.mwWall1) or id == tonumber(mwCfg.mwWall2) or id == 16518 then
+  if id == tonumber(mwCfg.mwWall1) or id == tonumber(mwCfg.mwWall2) or id == 16518 or id == 2128 then
     return 20000
   end
 
@@ -5177,7 +5679,7 @@ onAddThing(function(tile, thing)
   pauseTriggeredByTile[key] = nil
 
   if mwCfg.iconHoldMwWg == true then
-    local markText = wallTextById(id)
+    local markText = takeOwnWallCast(pos, id)
     if markText then
       tile:setText(markText)
       addHoldCandidate(pos)
@@ -5227,6 +5729,7 @@ onKeyPress(function(keys)
   local key = tostring(keys or ""):lower()
   if key ~= "escape" and key ~= "esc" then return end
 
+  cancelCursorCast()
   clearHoldMarks()
 
   if trapCheckPos then
@@ -5246,6 +5749,7 @@ onKeyPress(function(keys)
   trapCheckPos = nil
   trapMwPos = nil
 end)
+
 -- ============================================================
 --  PUSHMAX
 -- ============================================================
@@ -11126,7 +11630,7 @@ end
 end
 
 do
-setDefaultTab("Main")
+    setDefaultTab("Main")
 
 --==================================================
 -- STORAGE FIXO DOS ICONES
@@ -13403,6 +13907,209 @@ end
 
 macro(80, function()
   updatePushMaxArrows()
+end)
+
+
+--==================================================
+-- MW/WG: CURSORES AO LADO DO ICONE HOLD MW/WG
+--==================================================
+
+local LNS_MW_CURSOR_ICONS = {
+  widgets = {},
+  width = lnsIsMobile() and 64 or 58,
+  height = lnsIsMobile() and 46 or 42,
+  defs = {
+    -- ficam embaixo do HOLD MW/WG, nos dois quadrados marcados
+    { id = "mw", text = "CURSOR MW", fn = "cursorMw", stateFn = "isCursorMw", itemId = 3180, storageRune = "mwRune", ox = -33, oy = 52 },
+    { id = "wg", text = "CURSOR WG", fn = "cursorWg", stateFn = "isCursorWg", itemId = 3156, storageRune = "wgRune", ox =  33, oy = 52 }
+  }
+}
+
+local function holdMwWgIconWidget()
+  local pack = LNS_ICON.icons["mwsystem_hold_mw_wg"]
+  return pack and pack.icon or nil
+end
+
+local function isHoldMwWgEnabledForCursorIcons()
+  local st = iconsStorage["mwsystem_hold_mw_wg"]
+  local icon = holdMwWgIconWidget()
+
+  if not st or st.show ~= true or not isWidgetVisible(icon) then
+    return false
+  end
+
+  if LNS_MWSystem and type(LNS_MWSystem.isHoldMwWg) == "function" then
+    local ok, res = pcall(LNS_MWSystem.isHoldMwWg)
+    if ok then return res == true end
+  end
+
+  return type(charStorage) == "table"
+    and type(charStorage.holdMwWgPanel) == "table"
+    and charStorage.holdMwWgPanel.iconHoldMwWg == true
+end
+
+local function hideMwCursorIcons()
+  for _, w in pairs(LNS_MW_CURSOR_ICONS.widgets) do
+    if w then pcall(function() w:hide() end) end
+  end
+
+  if LNS_MWSystem and type(LNS_MWSystem.stopCursor) == "function" then
+    pcall(LNS_MWSystem.stopCursor)
+  end
+end
+
+if not LNS_MW_CURSOR_ICON_UI_LOADED then
+  LNS_MW_CURSOR_ICON_UI_LOADED = true
+
+  g_ui.loadUIFromString([[
+LNSMWCursorIcon < UIWidget
+  size: 58 42
+  phantom: false
+  focusable: false
+
+  Item
+    id: item
+    anchors.horizontalCenter: parent.horizontalCenter
+    anchors.top: parent.top
+    margin-top: -1
+    size: 28 28
+    phantom: true
+
+  Label
+    id: title
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin-bottom: 0
+    color: white
+    font: verdana-9px
+    text-align: center
+    phantom: true
+]])
+end
+
+local function getMwCursorIconItemId(def)
+  local cfg = type(charStorage) == "table" and charStorage.holdMwWgPanel or nil
+  return tonumber(cfg and cfg[def.storageRune]) or tonumber(def.itemId) or 0
+end
+
+local function isMwCursorIconActive(def)
+  if LNS_MWSystem and def and def.stateFn and type(LNS_MWSystem[def.stateFn]) == "function" then
+    local ok, res = pcall(LNS_MWSystem[def.stateFn])
+    return ok and res == true
+  end
+  return false
+end
+
+local function applyMwCursorIconVisual(w, def)
+  if not w then return end
+
+  local active = isMwCursorIconActive(def)
+
+  if w.title then
+    w.title:setColor(active and "#00ff00" or "white")
+  end
+
+  if w.setOpacity then
+    w:setOpacity(active and 1.00 or 0.90)
+  end
+
+  if w.setTooltip then
+    w:setTooltip(def.text .. (active and " ON" or " OFF"))
+  end
+end
+
+local function ensureMwCursorIcon(def)
+  local w = LNS_MW_CURSOR_ICONS.widgets[def.id]
+  if w then return w end
+
+  local panel = modules.game_interface and modules.game_interface.gameMapPanel
+  if not panel then return nil end
+
+  w = g_ui.createWidget("LNSMWCursorIcon", panel)
+  w.botWidget = true
+  w.botIcon = true
+  w:setId("lnsMwCursorIcon_" .. def.id)
+  w:setTooltip(def.text)
+  w:setSize(LNS_MW_CURSOR_ICONS.width .. " " .. LNS_MW_CURSOR_ICONS.height)
+
+  if w.title then
+    w.title:setText(def.text)
+    w.title:setTextAlign(AlignCenter)
+    w.title:setColor("white")
+    if w.title.setFont then
+      w.title:setFont("verdana-9px")
+    end
+  end
+
+  if w.setOpacity then
+    w:setOpacity(0.95)
+  end
+
+  local function executeCursor()
+    if LNS_MWSystem and type(LNS_MWSystem[def.fn]) == "function" then
+      pcall(LNS_MWSystem[def.fn])
+      applyMwCursorIconVisual(w, def)
+    elseif modules and modules.game_textmessage then
+      modules.game_textmessage.displayGameMessage("Carregue o MW System antes dos icones.")
+    end
+  end
+
+  w.onMousePress = function(widget, mousePos, button)
+    executeCursor()
+    return true
+  end
+
+  w.onMouseRelease = function(widget, mousePos, button)
+    return true
+  end
+
+  w.onClick = function()
+    return true
+  end
+
+  w.onDoubleClick = function()
+    return true
+  end
+
+  LNS_MW_CURSOR_ICONS.widgets[def.id] = w
+  return w
+end
+
+local function updateMwCursorIcons()
+  local icon = holdMwWgIconWidget()
+  if not icon or not isHoldMwWgEnabledForCursorIcons() then
+    hideMwCursorIcons()
+    return
+  end
+
+  local cx = icon:getX() + (icon:getWidth() / 2)
+  local cy = icon:getY() + (icon:getHeight() / 2)
+
+  for _, def in ipairs(LNS_MW_CURSOR_ICONS.defs) do
+    local w = ensureMwCursorIcon(def)
+    if w then
+      if w.item then
+        setArrowItem(w.item, getMwCursorIconItemId(def))
+      end
+
+      applyMwCursorIconVisual(w, def)
+
+      local x = math.floor(cx + def.ox - (w:getWidth() / 2))
+      local y = math.floor(cy + def.oy - (w:getHeight() / 2))
+
+      w:breakAnchors()
+      w:move(x, y)
+      w:show()
+      w:raise()
+    end
+  end
+
+  pcall(function() icon:raise() end)
+end
+
+macro(120, function()
+  updateMwCursorIcons()
 end)
 
 
