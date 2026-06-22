@@ -5382,7 +5382,10 @@ macro(100, function()
     if config.friendList and isFriend and isFriend(name) then return true end
     if config.friendList and isFriendName(name) then return true end
     if config.partyMembers and creature.isPartyMember and creature:isPartyMember() then return true end
-    if config.guildMembers and creature.isGuildMember and creature:isGuildMember() then return true end
+    if config.guildMembers and creature.getEmblem then
+      local emblem = creature:getEmblem()
+      if emblem == 1 or emblem == 4 then return true end
+    end
 
     if not config.friendList and not config.partyMembers and not config.guildMembers then
       return true
@@ -5511,13 +5514,11 @@ onTalk(function(name, level, mode, text, channelId, pos)
   if text ~= "p" then return end
 
   if not charStorage[switchSio] or not charStorage[switchSio].enabled then
-    warn("[Mana Help] Bloqueado: O painel geral (Healing Friend) esta desligado.")
     return
   end
 
   local mpId = config.potionMPID
   if not mpId or mpId <= 100 then
-    warn("[Mana Help] Bloqueado: Nenhuma Potion MP configurada no painel. ID lido: " .. tostring(mpId))
     return
   end
 
@@ -5533,13 +5534,11 @@ onTalk(function(name, level, mode, text, channelId, pos)
   end
 
   if not targetCreature then
-    warn("[Mana Help] Bloqueado: O player " .. name .. " pediu mana mas nao esta na sua tela.")
     return
   end
 
   local dist = getDistanceBetween(player:getPosition(), targetCreature:getPosition())
   if dist > 1 then
-    warn("[Mana Help] Bloqueado: O player " .. name .. " pediu mana mas esta longe. Distancia: " .. dist)
     return
   end
 
@@ -5557,14 +5556,14 @@ onTalk(function(name, level, mode, text, channelId, pos)
   if config.friendList and isFriendName(name) then validTarget = true end
   if config.partyMembers and targetCreature.isPartyMember and targetCreature:isPartyMember() then validTarget = true end
 
-  if config.guildMembers then
-    if targetCreature.isGuildMember and targetCreature:isGuildMember() then validTarget = true end
-    if targetCreature.getEmblem and targetCreature:getEmblem() == 1 then validTarget = true end
-    if targetCreature.getShield and targetCreature:getShield() == 1 then validTarget = true end
-  end
+  if config.guildMembers and targetCreature.getEmblem then
+      local emblem = targetCreature:getEmblem()
+      if emblem == 1 or emblem == 4 then
+        validTarget = true
+      end
+    end
 
   if validTarget then
-    warn("[Mana Help] Sucesso! Usando Potion no player: " .. name)
 
     schedule(50, function()
       if g_game.useInventoryItemWith then
@@ -5574,7 +5573,6 @@ onTalk(function(name, level, mode, text, channelId, pos)
       end
     end)
   else
-    warn("[Mana Help] Bloqueado: O player " .. name .. " esta colado, mas nao eh seu amigo, party ou guild ativo no painel.")
   end
 end)
 end
