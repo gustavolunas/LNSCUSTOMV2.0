@@ -8,8 +8,6 @@ error = function()
     return  
 end
 
-print("ARCHIVE2 OK")
-
 do
   setDefaultTab("Main")
 
