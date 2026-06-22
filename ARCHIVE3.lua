@@ -2748,6 +2748,7 @@ onTextMessage(function(mode, text)
   end
 end)
 
+cfg.training = false
 macro(500, function()
   if not cfg.enabled then return end
 
