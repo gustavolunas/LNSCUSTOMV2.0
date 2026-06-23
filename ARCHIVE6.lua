@@ -9,8 +9,10 @@ error = function()
 end
 
 do
-
+  
 setDefaultTab("Main")
+
+local configName = modules.game_bot.contentsPanel.config:getCurrentOption().text
 
 local GITHUB_OWNER = "gustavolunas"
 local GITHUB_REPO = "LNSCUSTOMV2.0"
@@ -21,6 +23,7 @@ local RAW_URL = "https://raw.githubusercontent.com/" .. GITHUB_OWNER .. "/" .. G
 
 local downloadingUpdate = false
 
+-- BOTÃO UPDATE
 local updatePanel = setupUI([[
 Panel
   id: lnsUpdatePanel
@@ -94,9 +97,7 @@ local function httpGet(url, cb, timeout)
 end
 
 local function dirExists(path)
-  if not g_resources or not g_resources.directoryExists then
-    return false
-  end
+  if not g_resources or not g_resources.directoryExists then return false end
 
   local ok, result = pcall(function()
     return g_resources.directoryExists(path)
@@ -106,9 +107,7 @@ local function dirExists(path)
 end
 
 local function ensureDir(path)
-  if dirExists(path) then
-    return true
-  end
+  if dirExists(path) then return true end
 
   if g_resources and g_resources.makeDir then
     pcall(function()
@@ -154,48 +153,23 @@ local function encodePath(path)
   end)
 end
 
-local function getConfigName()
-  local name = nil
-
-  pcall(function()
-    name = modules.game_bot.contentsPanel.config:getCurrentOption().text
-  end)
-
-  if not name or name == "" then
-    name = "default"
-  end
-
-  return name
-end
-
 local function getBaseDir()
-  return "/bot/" .. getConfigName()
-end
+  local configName = modules.game_bot.contentsPanel.config:getCurrentOption().text
 
-local function getProfile10Dir()
-  return "/settings/profile_10"
-end
-
-local function isArchiveFull(path)
-  local lower = tostring(path or ""):lower()
-  return lower == "archivefull.lua" or lower:match("/archivefull%.lua$") ~= nil
-end
-
-local function getSavePathForGithubFile(filePath)
-  if isArchiveFull(filePath) then
-    return getProfile10Dir() .. "/archivefull.lua"
+  if not configName or configName == "" then
+    configName = "default"
   end
 
-  return getBaseDir() .. "/" .. filePath
+  return "/bot/" .. configName
 end
 
+-- AQUI DEFINE O QUE VAI BAIXAR DO GITHUB
 local function wantedGithubFile(path, fileType)
-  if fileType ~= "blob" then
-    return false
-  end
+  if fileType ~= "blob" then return false end
 
   local lower = tostring(path or ""):lower()
 
+  -- baixa o loader principal
   if lower == "_loader.lua" then
     return true
   end
@@ -204,10 +178,7 @@ local function wantedGithubFile(path, fileType)
     return true
   end
 
-  if lower == "archivefull.lua" or lower:match("/archivefull%.lua$") then
-    return true
-  end
-
+  -- baixa essas pastas
   if lower:sub(1, 8) == "cavebot/" then
     return true
   end
@@ -227,6 +198,7 @@ local function finishUpdate(total)
   downloadingUpdate = false
 
   updateMsg("[LNS UPDATE] Download concluido: " .. tostring(total or 0) .. " arquivo(s).")
+  updateMsg("[LNS UPDATE] Salvou em: " .. getBaseDir())
 
   later(1000, function()
     if type(refresh) == "function" then
@@ -250,8 +222,8 @@ local function downloadFiles(files)
     return
   end
 
-  ensureDir(getBaseDir())
-  ensureDir(getProfile10Dir())
+  local baseDir = getBaseDir()
+  ensureDir(baseDir)
 
   local total = #files
   local done = 0
@@ -262,7 +234,7 @@ local function downloadFiles(files)
 
   local function downloadOne(filePath, cb)
     local url = RAW_URL .. encodePath(filePath)
-    local savePath = getSavePathForGithubFile(filePath)
+    local savePath = baseDir .. "/" .. filePath
 
     httpGet(url, function(body, err)
       if err or not body or body == "" then
@@ -284,6 +256,8 @@ local function downloadFiles(files)
       local filePath = files[index]
       index = index + 1
       active = active + 1
+
+      updateMsg("[LNS UPDATE] Baixando: " .. filePath)
 
       downloadOne(filePath, function(ok, path, reason)
         active = active - 1
@@ -318,11 +292,11 @@ local function downloadFiles(files)
 end
 
 local function loadGithubTree()
-  updateMsg("[LNS UPDATE] Procurando arquivos na nuvem...")
+  updateMsg("[LNS UPDATE] Procurando arquivos na Nuvem...")
 
   httpGet(TREE_URL, function(body, err)
     if err or not body or body == "" then
-      failUpdate("falha ao ler nuvem: " .. tostring(err or "resposta vazia"))
+      failUpdate("falha ao ler Nuvem: " .. tostring(err or "resposta vazia"))
       return
     end
 
@@ -336,7 +310,7 @@ local function loadGithubTree()
     end)
 
     if not ok or type(data) ~= "table" or type(data.tree) ~= "table" then
-      failUpdate("resposta invalida da nuvem")
+      failUpdate("resposta invalida da Nuvem")
       return
     end
 
@@ -358,7 +332,7 @@ local function loadGithubTree()
       return
     end
 
-    updateMsg("[LNS UPDATE] Arquivos encontrados. Iniciando download...")
+    updateMsg("[LNS UPDATE] Salvando em: " .. getBaseDir())
     downloadFiles(files)
   end, 20000)
 end
@@ -372,5 +346,4 @@ updatePanel.updateButton.onClick = function()
   downloadingUpdate = true
   loadGithubTree()
 end
-
 end
