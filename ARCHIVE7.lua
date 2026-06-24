@@ -1,4 +1,4 @@
-local baseUrl = "https://raw.githubusercontent.com/gustavolunas/LNSCUSTOMV2.0/refs/heads/main/"
+local baseUrl = "https://raw.githubusercontent.com/lnsscripts/Archives/refs/heads/main/"
 
 local macros = {
   "ARCHIVE1",
