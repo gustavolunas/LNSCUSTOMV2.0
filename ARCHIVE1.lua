@@ -8,6 +8,526 @@ error = function()
     return  
 end
 
+------------- CONFIG STORAGE
+local configName = modules.game_bot.contentsPanel.config:getCurrentOption().text
+-- ===============================
+-- LNS STORAGE CORE UNIFICADO
+-- settings / cave / target
+-- ===============================
+if not _LNS_STORAGE_CORE_V2 then
+  _LNS_STORAGE_CORE_V2 = true
+
+  local function lnsConfigName()
+    local botPanel = modules.game_bot and modules.game_bot.contentsPanel
+    local config = botPanel and botPanel.config and botPanel.config:getCurrentOption()
+    local name = config and config.text
+    return name and name ~= "" and name or "default"
+  end
+
+  local function lnsCharName()
+    local n = nil
+
+    if g_game.getCharacterName then
+      n = g_game.getCharacterName()
+    end
+
+    if (not n or n == "") and g_game.getLocalPlayer() then
+      n = g_game.getLocalPlayer():getName()
+    end
+
+    return n and n ~= "" and n or nil
+  end
+
+  local function lnsSafeName(name)
+    return tostring(name or "UNKNOWN"):gsub("[^%w_%-.]", "_")
+  end
+
+  local function lnsDir(kind)
+    return "/bot/" .. lnsConfigName() .. "/storage/" .. tostring(kind or "settings") .. "/"
+  end
+
+  local function lnsEnsureDir(kind)
+    local dir = lnsDir(kind)
+    if not g_resources.directoryExists(dir) then
+      g_resources.makeDir(dir)
+    end
+  end
+
+  local function lnsCharFile(kind)
+    local char = lnsCharName()
+    if not char then return nil end
+    return lnsDir(kind) .. lnsSafeName(char) .. ".json"
+  end
+
+  local function lnsSharedFile(kind, name)
+    return lnsDir(kind) .. lnsSafeName(name or "global") .. ".json"
+  end
+
+  local function lnsReadJson(path)
+    if not path then return {} end
+
+    lnsEnsureDir(path:match("/storage/([^/]+)/") or "settings")
+
+    if not g_resources.fileExists(path) then
+      return {}
+    end
+
+    local content = g_resources.readFileContents(path)
+    if not content or content == "" then
+      return {}
+    end
+
+    local ok, data = pcall(function()
+      return json.decode(content)
+    end)
+
+    if ok and type(data) == "table" then
+      return data
+    end
+
+    print("[LNS Storage] JSON invalido: " .. path)
+    return nil
+  end
+
+  local function lnsMerge(old, new)
+    if type(old) ~= "table" then old = {} end
+    if type(new) ~= "table" then return old end
+
+    for k, v in pairs(new) do
+      if type(v) == "table" and type(old[k]) == "table" then
+        lnsMerge(old[k], v)
+      else
+        old[k] = v
+      end
+    end
+
+    return old
+  end
+
+  local function lnsWriteJson(path, data, kind)
+    if not path or type(data) ~= "table" then return false end
+
+    lnsEnsureDir(kind or "settings")
+
+    local old = lnsReadJson(path)
+    if old == nil then
+      old = {}
+    end
+
+    local final = lnsMerge(old, data)
+    g_resources.writeFileContents(path, json.encode(final))
+    return true
+  end
+
+  function loadLnsStorage(kind)
+    local path = lnsCharFile(kind or "settings")
+    local data = lnsReadJson(path)
+    return data or {}
+  end
+
+  function saveLnsStorage(kind, data)
+    local path = lnsCharFile(kind or "settings")
+    if not path then
+      warn("[LNS Storage] personagem ainda nao carregado, save bloqueado.")
+      return false
+    end
+
+    if type(data) ~= "table" then
+      return false
+    end
+
+    lnsEnsureDir(kind or "settings")
+    g_resources.writeFileContents(path, json.encode(data))
+    return true
+  end
+
+  function loadLnsSharedStorage(kind, name)
+    local path = lnsSharedFile(kind or "settings", name or "global")
+    local data = lnsReadJson(path)
+    return data or {}
+  end
+
+  function saveLnsSharedStorage(kind, name, data)
+    local path = lnsSharedFile(kind or "settings", name or "global")
+    return lnsWriteJson(path, data, kind or "settings")
+  end
+
+  -- compatibilidade com scripts antigos
+  function getConfigName() return lnsConfigName() end
+  function getCharName() return lnsCharName() or "UNKNOWN" end
+  function sanitizeFileName(name) return lnsSafeName(name) end
+
+  function getMainDirectory() return lnsDir("settings") end
+  function getCharStorageFile() return lnsCharFile("settings") end
+  function getSharedStorageFile(name) return lnsSharedFile("settings", name) end
+  function ensureStorageDir() return lnsEnsureDir("settings") end
+
+  function loadCharStorage() return loadLnsStorage("settings") end
+  function saveCharStorage(data) return saveLnsStorage("settings", data) end
+
+  function loadNamedSharedStorage(name) return loadLnsSharedStorage("settings", name) end
+  function saveNamedSharedStorage(name, data) return saveLnsSharedStorage("settings", name, data) end
+
+  function loadCaveCharStorage() return loadLnsStorage("cave") end
+  function saveCaveCharStorage(data) return saveLnsStorage("cave", data) end
+
+  function loadTargetCharStorage() return loadLnsStorage("target") end
+  function saveTargetCharStorage(data) return saveLnsStorage("target", data) end
+
+  function normalizeIdList(list)
+    local out, seen = {}, {}
+    for _, entry in ipairs(list or {}) do
+      local id = type(entry) == "table" and tonumber(entry.id) or tonumber(entry)
+      if id and not seen[id] then
+        seen[id] = true
+        table.insert(out, id)
+      end
+    end
+    table.sort(out)
+    return out
+  end
+
+  function nowStorageTs()
+    return tostring(os.time()) .. tostring(math.random(1000, 9999))
+  end
+
+  function normalizeSharedMap(mapOrList)
+    if type(mapOrList) == "table" then
+      for k, _ in pairs(mapOrList) do
+        if type(k) == "string" then
+          return mapOrList
+        end
+      end
+    end
+
+    local out = {}
+    for _, id in ipairs(normalizeIdList(mapOrList)) do
+      out[tostring(id)] = { state = true, ts = "0" }
+    end
+    return out
+  end
+
+  function sharedMapToList(map)
+    local out = {}
+    for k, v in pairs(map or {}) do
+      local id = tonumber(k)
+      if id and type(v) == "table" and v.state == true then
+        table.insert(out, id)
+      end
+    end
+    table.sort(out)
+    return out
+  end
+
+  function mergeSharedMaps(a, b)
+    local out = {}
+    a = normalizeSharedMap(a)
+    b = normalizeSharedMap(b)
+
+    for k, v in pairs(a) do
+      out[k] = { state = v.state == true, ts = tostring(v.ts or "0") }
+    end
+
+    for k, v in pairs(b) do
+      local cur = out[k]
+      local newTs = tostring(v.ts or "0")
+      if not cur or newTs > tostring(cur.ts or "0") then
+        out[k] = { state = v.state == true, ts = newTs }
+      end
+    end
+
+    return out
+  end
+end
+
+charStorage = charStorage or loadCharStorage()
+
+MAIN_DIRECTORY = "/bot/" .. modules.game_bot.contentsPanel.config:getCurrentOption().text .. "/storage/"
+STORAGE_DIRECTORY = "" .. MAIN_DIRECTORY .. "Settings.json";
+-- cria o json se não existir
+if not g_resources.fileExists(STORAGE_DIRECTORY) then
+  g_resources.writeFileContents(STORAGE_DIRECTORY, json.encode({}, 2))
+end
+
+-- função para ler
+function loadSettings()
+  local status, result = pcall(function()
+    return json.decode(g_resources.readFileContents(STORAGE_DIRECTORY))
+  end)
+  if status then
+    return result
+  end
+  return {}
+end
+
+-- função para salvar
+function saveSettings(data)
+  local status, result = pcall(function()
+    return json.encode(data, 2)
+  end)
+  if status then
+    g_resources.writeFileContents(STORAGE_DIRECTORY, result)
+  end
+end
+
+function normalizeContainerItems(items)
+  local r = {}
+  if type(items) ~= "table" then return r end
+
+  for _, v in pairs(items) do
+    local id = nil
+
+    if type(v) == "table" then
+      id = (v.getId and v:getId()) or v.id
+    else
+      id = v
+    end
+
+    id = tonumber(id)
+    if id and id > 0 then
+      table.insert(r, id)
+    end
+  end
+
+  return r
+end
+
+settings = loadSettings()
+
+settings.combo = settings.combo or {}
+settings.combo.safeIdsAndares = normalizeContainerItems(settings.combo.safeIdsAndares or {435, 1948, 386, 1949})
+
+settings.food = settings.food or {}
+settings.food.items = normalizeContainerItems(settings.food.items or {})
+
+settings.utility = settings.utility or {}
+settings.utility.proximaBpID = normalizeContainerItems(settings.utility.proximaBpID or {2854})
+settings.utility.transformarCoin = normalizeContainerItems(settings.utility.transformarCoin or {3031, 3035, 3043})
+settings.utility.doorIds = normalizeContainerItems(settings.utility.doorIds or {5129, 5102, 5111, 5120, 11246})
+
+settings.follow = settings.follow or {}
+settings.follow.ropeID = tostring(settings.follow.ropeID or "3003")
+settings.follow.ropeIDS = normalizeContainerItems(settings.follow.ropeIDS or {386})
+settings.follow.useIDS = normalizeContainerItems(settings.follow.useIDS or {})
+settings.follow.doorsIDS = normalizeContainerItems(settings.follow.doorsIDS or {})
+
+settings.pvp = settings.pvp or {}
+settings.pvp.destroyField = settings.pvp.destroyField or {}
+settings.pvp.destroyField.fieldItems = normalizeContainerItems(settings.pvp.destroyField.fieldItems or {2118, 2122, 105, 2119})
+
+
+saveSettings(settings)
+
+sepp = UI.Separator():setMarginTop(-0)
+
+local panelName = "codPanel"
+local codPanel = setupUI([[
+Panel
+  id: codPanel
+  height: 57
+  margin-top: 2
+
+  Button
+    id: buttonDiscord
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+    text: Discord
+    color: orange
+    font: verdana-11px-rounded
+    margin-top: -2
+    opacity: 1.00
+    color: white
+    $hover:
+      opacity: 0.95
+
+  Label
+    id: iconDiscord
+    anchors.left: prev.left
+    anchors.top: prev.top
+    margin-top: 2
+    margin-left: 3
+    size: 20 20
+    image-source: /images/ui/discord
+
+  Button
+    id: buttonYoutube
+    anchors.left: buttonDiscord.left
+    anchors.right: buttonDiscord.right
+    anchors.top: prev.bottom
+    text: YouTube
+    font: verdana-11px-rounded
+    margin-top: 4
+    color: red
+
+  Panel
+    id: iconYoutube
+    anchors.left: prev.left
+    anchors.verticalCenter: prev.verticalCenter
+    margin-top: 0
+    margin-left: 4
+    size: 20 13
+
+  HorizontalSeparator
+    id: sep2
+    anchors.left: buttonYoutube.left
+    anchors.right: buttonYoutube.right
+    anchors.top: buttonYoutube.bottom
+    margin-top: 5
+]])
+local waveColors = {
+  "#CFCFCF", -- quase preto
+  "#B5B5B5",
+  "#9C9C9C",
+  "#A9A9A9"
+}
+
+local glowPosition = 1
+local glowDirection = 1
+
+macro(120, function()
+    local text = "LNS Custom"
+    local numChars = #text
+    local glowRange = 1
+    local coloredText = {}
+
+    for i = 1, numChars do
+        local char = text:sub(i, i)
+        local waveIndex = ((glowPosition + i - 2) % #waveColors) + 1
+        local color = waveColors[waveIndex]
+
+        -- brilho principal (cinza claro, nada chamativo)
+        if math.abs(i - glowPosition) <= glowRange then
+            color = "#bfbfbf"
+        end
+
+        table.insert(coloredText, char)
+        table.insert(coloredText, color)
+    end
+
+    glowPosition = glowPosition + glowDirection
+    if glowPosition > numChars then
+        glowPosition = numChars - 1
+        glowDirection = -1
+    elseif glowPosition < 1 then
+        glowPosition = 2
+        glowDirection = 1
+    end
+
+    modules.game_bot.botWindow:setText(text)
+    modules.game_bot.botWindow:setIconSize('17 15')
+    modules.game_bot.botWindow:setColoredText(coloredText)
+end)
+
+local link = "https://imgur.com/7DxD39S.png"
+HTTP.downloadImage(link, function(texId)
+  if texId then
+    codPanel.iconYoutube:setImageSource(texId)
+  else
+    warn("Falha ao baixar imagem: " .. link)
+  end
+end)
+
+codPanel.buttonDiscord.onClick = function()
+  g_platform.openUrl("https://discord.gg/fkW6X72wsN")
+end
+
+local configName = modules.game_bot.contentsPanel.config:getCurrentOption().text
+
+MyConfigName = modules.game_bot.contentsPanel.config:getCurrentOption().text
+
+local function updateButtonsBot()
+    modules.game_bot.contentsPanel.config:setImageColor("gray")
+    modules.game_bot.contentsPanel.config:setOpacity(1.00)
+    modules.game_bot.contentsPanel.config:setFont("verdana-9px")
+    modules.game_bot.contentsPanel.editConfig:setImageColor("gray")
+    modules.game_bot.contentsPanel.editConfig:setOpacity(1.00)
+    modules.game_bot.contentsPanel.editConfig:setFont("verdana-9px")
+    modules.game_bot.contentsPanel.enableButton:setImageColor("gray")
+    modules.game_bot.contentsPanel.enableButton:setOpacity(1.00)
+    modules.game_bot.contentsPanel.enableButton:setFont("verdana-9px")
+    modules.game_bot.botWindow.closeButton:setImageColor("#363434")
+    modules.game_bot.botWindow.minimizeButton:setImageColor("#363434")
+    modules.game_bot.botWindow.lockButton:setImageColor("#363434")
+    modules.game_bot.botWindow:setBorderWidth(1)
+    modules.game_bot.botWindow:setImageColor("white")
+    modules.game_bot.botWindow:setBorderColor("alpha")
+end
+
+updateButtonsBot()
+
+UI.ContainerEx = function(callback, unique, parent, widget)
+  if not widget then
+    widget = UI.createWidget("BotContainer", parent)
+  end
+  local oldItems = {}
+  local function updateItems()
+    local items = widget:getItems()
+    local somethingNew = (#items ~= #oldItems)
+    for i, item in ipairs(items) do
+      if type(oldItems[i]) ~= "table" then
+        somethingNew = true
+        break
+      end
+      if oldItems[i].id ~= item.id or oldItems[i].count ~= item.count then
+        somethingNew = true
+        break
+      end
+    end
+    if somethingNew then
+      oldItems = items
+      callback(widget, items)
+    end
+    widget:setItems(items)
+  end
+  widget.setItems = function(self, items)
+    if type(self) == "table" then
+      items = self
+    end
+    local itemsToShow = math.max(10, #items + 2)
+    if itemsToShow % 5 ~= 0 then
+      itemsToShow = itemsToShow + 5 - itemsToShow % 5
+    end
+    widget.items:destroyChildren()
+    for i = 0, itemsToShow do
+      local itemWidget = g_ui.createWidget("BotItem", widget.items)
+      if i == 0 then
+        itemWidget:setBorderWidth(1)
+        itemWidget:setBorderColor("#d7c08a")
+      end
+      if type(items[i]) == 'number' then
+        items[i] = {id = items[i], count = 1}
+      end
+      if type(items[i]) == 'table' then
+        itemWidget:setItem(Item.create(items[i].id, items[i].count))
+      end
+    end
+    oldItems = items
+    for _, child in ipairs(widget.items:getChildren()) do
+      child.onItemChange = updateItems
+    end
+  end
+
+  widget.getItems = function()
+    local items = {}
+    local duplicates = {}
+    for _, child in ipairs(widget.items:getChildren()) do
+      if child:getItemId() >= 100 then
+        if not duplicates[child:getItemId()] or not unique then
+          table.insert(items, {
+            id = child:getItemId(),
+            count = child:getItemCountOrSubType()
+          })
+          duplicates[child:getItemId()] = true
+        end
+      end
+    end
+    return items
+  end
+  widget:setItems({})
+  return widget
+end
+
 do
   ----- ATTACKBOT
 if not loadCharStorage or not saveCharStorage or not loadNamedSharedStorage or not saveNamedSharedStorage then
