@@ -8,6 +8,7 @@ error = function()
     return  
 end
 
+print("OLD LOADER CARREGADO!")
 local rawUrl = "https://raw.githubusercontent.com/gustavolunas/LNSCUSTOMV2.0/main/LnsLoader.lua"
 
 local function getCurrentConfigName()
