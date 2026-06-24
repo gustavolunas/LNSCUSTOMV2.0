@@ -180,16 +180,16 @@ local function getArchivePartName(path)
   local lower = tostring(path or ""):lower()
   local name = lower:match("([^/]+)$") or lower
 
-  if name == "archivesfull1.lua" then
-    return "archivesfull1.lua"
+  if name == "archivefull1.lua" then
+    return "archivefull1.lua"
   end
 
-  if name == "archivesfull2.lua" then
-    return "archivesfull2.lua"
+  if name == "archivefull2.lua" then
+    return "archivefull2.lua"
   end
 
-  if name == "archivesfull3.lua" then
-    return "archivesfull3.lua"
+  if name == "archivefull3.lua" then
+    return "archivefull3.lua"
   end
 
   return nil
