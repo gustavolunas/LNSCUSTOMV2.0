@@ -6,20 +6,6 @@ local lureEnabled = true
 local dangerValue = 0
 local looterStatus = ""
 
-targetCharStorage = loadTargetCharStorage()
-targetCharStorage.selectedProfile = targetCharStorage.selectedProfile or ""
-
-local function saveTargetChar()
-  saveTargetCharStorage(targetCharStorage)
-end
-
-storage._configs = storage._configs or {}
-storage._configs.targetbot_configs = storage._configs.targetbot_configs or {}
-
-if targetCharStorage.selectedProfile ~= "" then
-  storage._configs.targetbot_configs.selected = targetCharStorage.selectedProfile
-end
-
 -- ui
 local configWidget = UI.Config()
 local ui = UI.createWidget("TargetBotPanel")
@@ -52,15 +38,15 @@ local oldTibia = g_game.getClientVersion() < 960
 -- main loop, controlled by config
 targetbotMacro = macro(100, function()
   local pos = player:getPosition()
-  local specs = g_map.getSpectatorsInRange(pos, false, 6, 6)
+  local specs = g_map.getSpectatorsInRange(pos, false, 6, 6) -- 12x12 area
   local creatures = 0
   for i, spec in ipairs(specs) do
     if spec:isMonster() then
       creatures = creatures + 1
     end
   end
-  if creatures > 10 then
-    creatures = g_map.getSpectatorsInRange(pos, false, 3, 3)
+  if creatures > 10 then -- if there are too many monsters around, limit area
+    creatures = g_map.getSpectatorsInRange(pos, false, 3, 3) -- 6x6 area
   else
     creatures = specs
   end
@@ -73,7 +59,7 @@ targetbotMacro = macro(100, function()
     if hppc and hppc > 0 then
       local path = findPath(player:getPosition(), creature:getPosition(), 7, {ignoreLastCreature=true, ignoreNonPathable=true, ignoreCost=true, ignoreCreatures=true})
       if creature:isMonster() and (oldTibia or creature:getType() < 3) and path then
-        local params = TargetBot.Creature.calculateParams(creature, path)
+        local params = TargetBot.Creature.calculateParams(creature, path) -- return {craeture, config, danger, priority}
         dangerLevel = dangerLevel + params.danger
         if params.priority > 0 then
           targets = targets + 1
@@ -89,8 +75,10 @@ targetbotMacro = macro(100, function()
     end
   end
 
+  -- reset walking
   TargetBot.walkTo(nil)
 
+  -- looting
   local looting = TargetBot.Looting.process(targets, dangerLevel)
   local lootingStatus = TargetBot.Looting.getStatus()
   looterStatus = TargetBot.Looting.getStatus()
@@ -135,13 +123,13 @@ config = Config.setup("targetbot_configs", configWidget, "json", function(name, 
     ui.status.right:setText("Off")
     return targetbotMacro.setOff() 
   end
-
   TargetBot.Creature.resetConfigs()
   for _, value in ipairs(data["targeting"] or {}) do
     TargetBot.Creature.addConfig(value)
   end
   TargetBot.Looting.update(data["looting"] or {})
 
+  -- add configs
   if enabled then
     ui.status.right:setText("On")
   else
@@ -151,15 +139,6 @@ config = Config.setup("targetbot_configs", configWidget, "json", function(name, 
   targetbotMacro.setOn(enabled)
   targetbotMacro.delay = nil
   lureEnabled = true
-
-  if enabled == true and name and name ~= "" then
-    targetCharStorage.selectedProfile = name
-    saveTargetChar()
-
-    storage._configs = storage._configs or {}
-    storage._configs.targetbot_configs = storage._configs.targetbot_configs or {}
-    storage._configs.targetbot_configs.selected = name
-  end
 end)
 
 -- setup ui
@@ -189,7 +168,8 @@ ui.editor.buttons.remove.onClick = function()
   TargetBot.save()
 end
 
-TargetBot.isActive = function()
+-- public function, you can use them in your scripts
+TargetBot.isActive = function() -- return true if attacking or looting takes place
   return lastAction + 300 > now
 end
 
@@ -228,25 +208,16 @@ TargetBot.setOff = function(val)
 end
 
 TargetBot.getCurrentProfile = function()
-  return targetCharStorage.selectedProfile or ""
+  return storage._configs.targetbot_configs.selected
 end
 
 local botConfigName = modules.game_bot.contentsPanel.config:getCurrentOption().text
-
 TargetBot.setCurrentProfile = function(name)
   if not g_resources.fileExists("/bot/"..botConfigName.."/targetbot_configs/"..name..".json") then
     return warn("there is no targetbot profile with that name!")
   end
-
   TargetBot.setOff()
-
-  targetCharStorage.selectedProfile = name
-  saveTargetChar()
-
-  storage._configs = storage._configs or {}
-  storage._configs.targetbot_configs = storage._configs.targetbot_configs or {}
   storage._configs.targetbot_configs.selected = name
-
   TargetBot.setOn()
 end
 
@@ -260,12 +231,6 @@ TargetBot.save = function()
     table.insert(data.targeting, entry.value)
   end
   TargetBot.Looting.save(data.looting)
-
-  if storage._configs and storage._configs.targetbot_configs and storage._configs.targetbot_configs.selected then
-    targetCharStorage.selectedProfile = storage._configs.targetbot_configs.selected
-    saveTargetChar()
-  end
-
   config.save(data)
 end
 
@@ -289,6 +254,7 @@ TargetBot.lootStatus = function()
   return looterStatus
 end
 
+
 -- attacks
 local lastSpell = 0
 local lastAttackSpell = 0
@@ -297,7 +263,7 @@ TargetBot.saySpell = function(text, delay)
   if type(text) ~= 'string' or text:len() < 1 then return end
   if not delay then delay = 500 end
   if g_game.getProtocolVersion() < 1090 then
-    lastAttackSpell = now
+    lastAttackSpell = now -- pause attack spells, healing spells are more important
   end
   if lastSpell + delay < now then
     say(text)
@@ -331,9 +297,9 @@ TargetBot.useItem = function(item, subType, target, delay)
     if g_game.getClientVersion() < 780 then
       local tmpItem = g_game.findPlayerItem(item, subType)
       if not tmpItem then return end
-      g_game.useWith(tmpItem, target, subType)
+      g_game.useWith(tmpItem, target, subType) -- using item from bp
     else
-      g_game.useInventoryItemWith(item, target, subType)
+      g_game.useInventoryItemWith(item, target, subType) -- hotkey
     end
     lastItemUse = now
   end
@@ -349,9 +315,9 @@ TargetBot.useAttackItem = function(item, subType, target, delay)
     if g_game.getClientVersion() < 780 then
       local tmpItem = g_game.findPlayerItem(item, subType)
       if not tmpItem then return end
-      g_game.useWith(tmpItem, target, subType)
+      g_game.useWith(tmpItem, target, subType) -- using item from bp  
     else
-      g_game.useInventoryItemWith(item, target, subType)
+      g_game.useInventoryItemWith(item, target, subType) -- hotkey
     end
     lastRuneAttack = now
   end

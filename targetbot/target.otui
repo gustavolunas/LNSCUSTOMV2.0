@@ -34,20 +34,16 @@ TargetBotPanel < Panel
 
   TargetBotDualLabel
     id: status
-    visible: false
   TargetBotDualLabel
     id: target
-    visible: false
   TargetBotDualLabel
     id: config
-    visible: false
   TargetBotDualLabel
     id: danger
-    visible: false
 
   Panel
     id: listPanel
-    height: 130
+    height: 40
 
     TextList
       id: list
@@ -67,10 +63,9 @@ TargetBotPanel < Panel
       
   BotSwitch
     id: configButton
-    visible: false
     @onClick: |
       self:setOn(not self:isOn())
-      self:getParent().listPanel:setHeight(self:isOn() and 130 or 130)
+      self:getParent().listPanel:setHeight(self:isOn() and 100 or 40)
       self:getParent().editor:setVisible(self:isOn())
 
     $on:
@@ -81,7 +76,7 @@ TargetBotPanel < Panel
   
   Panel
     id: editor
-    visible: true
+    visible: false
     layout:
       type: verticalBox
       fit-children: true

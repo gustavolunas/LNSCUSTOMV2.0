@@ -148,7 +148,7 @@ TargetBot.Creature.walk = function(creature, config, targets)
   if config.closeLure and config.closeLureAmount <= getMonsters(1) then
     return TargetBot.allowCaveBot(150)
   end
-  if TargetBot.canLure() and (config.lure or config.lureCavebot or config.dynamicLure) and not (creature:getHealthPercent() < (charStorage.extras.killUnder or 30)) and not isTrapped then
+  if TargetBot.canLure() and (config.lure or config.lureCavebot or config.dynamicLure) and not (creature:getHealthPercent() < (storage.extras.killUnder or 30)) and not isTrapped then
     if targetBotLure then
       anchorPosition = nil
       return TargetBot.allowCaveBot(150)
@@ -168,10 +168,10 @@ TargetBot.Creature.walk = function(creature, config, targets)
   end
 
   local currentDistance = findPath(pos, cpos, 10, {ignoreCreatures=true, ignoreNonPathable=true, ignoreCost=true})
-  if (not config.chase or #currentDistance == 1) and not config.avoidAttacks and not config.keepDistance and config.rePosition and (creature:getHealthPercent() >= charStorage.extras.killUnder) then
+  if (not config.chase or #currentDistance == 1) and not config.avoidAttacks and not config.keepDistance and config.rePosition and (creature:getHealthPercent() >= storage.extras.killUnder) then
     return rePosition(config.rePositionAmount or 6)
   end
-  if ((charStorage.extras.killUnder > 1 and (creature:getHealthPercent() < charStorage.extras.killUnder)) or config.chase) and not config.keepDistance then
+  if ((storage.extras.killUnder > 1 and (creature:getHealthPercent() < storage.extras.killUnder)) or config.chase) and not config.keepDistance then
     if #currentDistance > 1 then
       return TargetBot.walkTo(cpos, 10, {ignoreNonPathable=true, precision=1})
     end

@@ -111,7 +111,7 @@ TargetBot.Looting.process = function(targets, dangerLevel)
     TargetBot.Looting.list = {}
     return false
   end
-  local loot = charStorage.extras.lootLast and TargetBot.Looting.list[#TargetBot.Looting.list] or TargetBot.Looting.list[1]
+  local loot = storage.extras.lootLast and TargetBot.Looting.list[#TargetBot.Looting.list] or TargetBot.Looting.list[1]
   if loot == nil then
     status = ""
     return false
@@ -141,9 +141,9 @@ TargetBot.Looting.process = function(targets, dangerLevel)
 
   local pos = player:getPosition()
   local dist = math.max(math.abs(pos.x-loot.pos.x), math.abs(pos.y-loot.pos.y))
-  local maxRange = charStorage.extras.looting or 40
+  local maxRange = storage.extras.looting or 40
   if loot.tries > 30 or loot.pos.z ~= pos.z or dist > maxRange then
-    table.remove(TargetBot.Looting.list, charStorage.extras.lootLast and #TargetBot.Looting.list or 1)
+    table.remove(TargetBot.Looting.list, storage.extras.lootLast and #TargetBot.Looting.list or 1)
     return true
   end
 
@@ -156,12 +156,12 @@ TargetBot.Looting.process = function(targets, dangerLevel)
 
   local container = tile:getTopUseThing()
   if not container or not container:isContainer() then
-    table.remove(TargetBot.Looting.list, charStorage.extras.lootLast and #TargetBot.Looting.list or 1)
+    table.remove(TargetBot.Looting.list, storage.extras.lootLast and #TargetBot.Looting.list or 1)
     return true
   end
 
   g_game.open(container)
-  waitTill = now + (charStorage.extras.lootDelay or 200)
+  waitTill = now + (storage.extras.lootDelay or 200)
   waitingForContainer = container:getId()
 
   return true
@@ -254,14 +254,14 @@ TargetBot.Looting.lootContainer = function(lootContainers, container)
   -- looting finished, remove container from list
   container.lootContainer = false
   g_game.close(container)
-  table.remove(TargetBot.Looting.list, charStorage.extras.lootLast and #TargetBot.Looting.list or 1) 
+  table.remove(TargetBot.Looting.list, storage.extras.lootLast and #TargetBot.Looting.list or 1) 
 end
 
 onTextMessage(function(mode, text)
   if TargetBot.isOff() then return end
   if #TargetBot.Looting.list == 0 then return end
   if string.find(text:lower(), "you are not the owner") then -- if we are not the owners of corpse then its a waste of time to try to loot it
-    table.remove(TargetBot.Looting.list, charStorage.extras.lootLast and #TargetBot.Looting.list or 1)
+    table.remove(TargetBot.Looting.list, storage.extras.lootLast and #TargetBot.Looting.list or 1)
   end
 end)
 

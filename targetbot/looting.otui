@@ -14,7 +14,6 @@ TargetBotLootingPanel < Panel
   BotContainer
     id: items
     margin-top: 3
-    height:68
   
   BotSwitch
     id: everyItem
@@ -29,7 +28,7 @@ TargetBotLootingPanel < Panel
   BotContainer
     id: containers
     margin-top: 3
-    height: 34
+    height: 45
   
   Panel
     id: maxDangerPanel
