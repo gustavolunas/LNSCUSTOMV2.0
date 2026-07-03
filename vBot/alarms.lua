@@ -1,3 +1,5 @@
+setDefaultTab("Tools")
+
 local panelName = "alarms"
 local ui = setupUI([[
 Panel
