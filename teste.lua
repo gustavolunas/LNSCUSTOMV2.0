@@ -69,7 +69,7 @@ do
     lnsRunBlock("RUNINGSCRIPTS", function()
       local baseUrl = "https://raw.githubusercontent.com/lnsscripts/Archives/refs/heads/main"
 
-      local macros = {
+      local archives = {
         "ARCHIVE1.lua",
         "ARCHIVE2.lua",
         "ARCHIVE3.lua",
@@ -77,20 +77,29 @@ do
         "ARCHIVE5.lua"
       }
 
-      local RETRY_BASE_MS = 250
-      local RETRY_CAP_MS  = 2000
-      local MAX_RETRIES   = 20
+      local RETRY_BASE_MS = 150
+      local RETRY_CAP_MS  = 800
+      local MAX_RETRIES   = 5
+
+      local scripts = {}
+      local errors = {}
+      local finished = {}
+      local pending = #archives
 
       local function httpGet(url, cb)
         if modules and modules.corelib and modules.corelib.HTTP and type(modules.corelib.HTTP.get) == "function" then
           return modules.corelib.HTTP.get(url, cb)
         end
 
+        if type(HTTP) == "table" and type(HTTP.get) == "function" then
+          return HTTP.get(url, cb)
+        end
+
         return cb(nil, "HTTP.get nao disponivel")
       end
 
       local function backoffMs(try)
-        local ms = RETRY_BASE_MS * (2 ^ (try - 1))
+        local ms = RETRY_BASE_MS * try
 
         if ms > RETRY_CAP_MS then
           ms = RETRY_CAP_MS
@@ -99,70 +108,88 @@ do
         return ms
       end
 
-      local function loadOne(name, onOk)
+      local function buildUrl(name)
+        return baseUrl:gsub("/+$", "") .. "/" .. name
+      end
+
+      local function runDownloadedScripts()
+
+        local loadedCount = 0
+        local failCount = 0
+
+        for _, name in ipairs(archives) do
+          local script = scripts[name]
+
+          if type(script) ~= "string" or script == "" then
+            failCount = failCount + 1
+          else
+            local fn, loadErr = loadstring(script, "@" .. name)
+
+            if not fn then
+              failCount = failCount + 1
+            else
+              local okRun, runErr = pcall(fn)
+
+              if not okRun then
+                failCount = failCount + 1
+              else
+                loadedCount = loadedCount + 1
+              end
+            end
+          end
+        end
+
+        if failCount <= 0 then
+          print("[LNS] TODAS AS MACROS CARREGADAS COM SUCESSO!")
+        else
+        end
+      end
+
+      local function markDone(name, script, err)
+        if finished[name] then
+          return
+        end
+
+        finished[name] = true
+        scripts[name] = script
+        errors[name] = err
+        pending = pending - 1
+
+        if pending <= 0 then
+          later(1, runDownloadedScripts)
+        end
+      end
+
+      local function downloadOne(name)
         local tries = 0
-        local url = baseUrl .. "/" .. name
+        local url = buildUrl(name)
 
         local function attempt()
           tries = tries + 1
 
           httpGet(url, function(script, err)
-            local okContent = not err and script and script ~= ""
+            local okContent = not err and type(script) == "string" and script ~= ""
 
-            if not okContent then
-              if MAX_RETRIES > 0 and tries >= MAX_RETRIES then
-                return
-              end
-
-              return later(backoffMs(tries), attempt)
+            if okContent then
+              markDone(name, script, nil)
+              return
             end
 
-            local fn, loadErr = loadstring(script, "@" .. name)
-
-            if not fn then
-              if MAX_RETRIES > 0 and tries >= MAX_RETRIES then
-                return
-              end
-
-              return later(backoffMs(tries), attempt)
+            if tries >= MAX_RETRIES then
+              markDone(name, nil, err or "conteudo vazio")
+              return
             end
 
-            local okRun, runErr = pcall(fn)
-
-            if not okRun then
-              if MAX_RETRIES > 0 and tries >= MAX_RETRIES then
-                return
-              end
-
-              return later(backoffMs(tries), attempt)
-            end
-
-            if type(onOk) == "function" then
-              onOk()
-            end
+            later(backoffMs(tries), attempt)
           end)
         end
 
         attempt()
       end
 
-      local idx = 1
-
-      local function runNext()
-        local name = macros[idx]
-
-        if not name then
-          print("[LNS] TODAS AS MACROS CARREGADAS COM SUCESSO!")
-          return
-        end
-
-        loadOne(name, function()
-          idx = idx + 1
-          later(1, runNext)
-        end)
+      for _, name in ipairs(archives) do
+        downloadOne(name)
       end
-
-      runNext()
     end)
   end
 
@@ -182,7 +209,7 @@ do
       return
     end
 
-    later(500, waitAndStart)
+    later(250, waitAndStart)
   end
 
   waitAndStart()
