@@ -9,6 +9,20 @@ error = function()
 end
 
 setDefaultTab("Main")
+local function showUpdateMsg()
+    modules.game_textmessage.displayGameMessage("ATUALIZACAO DISPONIVEL, LEIA A MENSAGEM NO WHATSAPP ANTES DE ATUALIZAR!!!")
+    print("ATUALIZACAO DISPONIVEL, LEIA A MENSAGEM NO WHATSAPP ANTES DE ATUALIZAR!!!")
+end
+
+local function spamUpdate()
+  for i = 0, 7 do
+    schedule(i * 1000, function()
+      showUpdateMsg()
+    end)
+  end
+end
+
+spamUpdate()
 -- ============================================================
 local GITHUB_OWNER = "gustavolunas"
 local GITHUB_REPO = "LNSCUSTOMV2.0"
