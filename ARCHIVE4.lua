@@ -231,7 +231,7 @@ Panel
     anchors.right: parent.right
     anchors.top: parent.top
     height: 22
-    text: Update Archives
+    text: Download Att Custom.
     color: white
     font: verdana-11px-rounded
     image-source: /images/ui/button_rounded
